@@ -1,0 +1,4 @@
+INFO:     104.165.20.24:0 - "GET / HTTP/1.1" 200 OK
+INFO:     2603:6010:200:1987:a610:b70a:6b41:f526:0 - "GET / HTTP/1.1" 200 OK
+INFO:     2603:6010:200:1987:a610:b70a:6b41:f526:0 - "GET /api/team_metrics/seasons HTTP/1.1" 200 OK
+INFO:     2603:6010:200:1987:a610:b70a:6b41:f526:0 - "GET /api/team_metrics?season=2026 HTTP/1.1" 200 OK
