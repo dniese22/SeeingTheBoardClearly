@@ -90,7 +90,6 @@ function renderTable() {
       <td class="metric-cell" data-metric="win_pct">${formatPct(row.win_pct)}</td>
       <td class="metric-cell" data-metric="over_pct">${formatPct(row.over_pct)}</td>
       <td class="metric-cell" data-metric="ats_pct">${formatPct(row.ats_pct)}</td>
-      <td class="metric-cell" data-metric="cover_pct">${formatPct(row.cover_pct)}</td>
     `;
     tbody.appendChild(tr);
   });

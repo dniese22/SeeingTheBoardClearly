@@ -37,33 +37,12 @@ def index():
 
 
 # --- Helpers ---
-def _result_to_win_flags(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Convert nflreadpy's `result` to boolean win/loss from the HOME perspective.
-    """
-    res = df["result"].cast(pl.Utf8, strict=False).str.to_lowercase()
-
-    is_home_win = (
-        (res == "home_win") |
-        (res == "home wins") |
-        (res == "home win") |
-        (res == "w") |
-        (res == "win") |
-        (res == "h")
-    )
-
-    is_home_win_numeric = df["result"].cast(pl.Float64, strict=False) == 1.0
-
-    return df.with_columns(
-        is_home_win=(is_home_win | is_home_win_numeric).fill_null(False)
-    )
-
-
 def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
     """
     Returns columns:
       season, team, win_pct, over_pct, ats_pct, cover_pct
     """
+
     required = [
         "season",
         "home_team",
@@ -87,39 +66,35 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         & pl.col("result").is_not_null()
     )
 
-    df = _result_to_win_flags(df)
-
-    # Over% based on game total vs total_line
+    # -----------------------------
+    # ✅ Win% logic (YOUR requested definition)
+    # - If team is HOME: win when result > 0
+    # - If team is AWAY: win when result < 0
+    # - win_pct = total wins / games played
+    # -----------------------------
     df = df.with_columns(
-        over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line"))
+        pl.col("result").cast(pl.Float64, strict=False).alias("result_num")
     )
-
-    # ATS cover logic (confirmed convention: spread_line > 0 => home favored)
-    df = df.with_columns(
-        home_covers=(pl.col("home_score") + pl.col("spread_line") > pl.col("away_score")),
-        away_covers=(pl.col("away_score") - pl.col("spread_line") > pl.col("home_score")),
-    )
-
-    # Straight-up win from each team's perspective
-    df = df.with_columns(
-        home_win=pl.col("is_home_win"),
-        away_win=~pl.col("is_home_win"),
-    )
+    df = df.filter(pl.col("result_num").is_not_null())
 
     home_rows = df.select(
         season=pl.col("season"),
         team=pl.col("home_team"),
-        win=pl.col("home_win"),
-        over=pl.col("over_game"),
-        ats=pl.col("home_covers"),
+        win=(pl.col("result_num") > 0),
+        over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
+        ats=(
+            (pl.col("home_score") + pl.col("spread_line") > pl.col("away_score"))
+        ),
     )
 
     away_rows = df.select(
         season=pl.col("season"),
         team=pl.col("away_team"),
-        win=pl.col("away_win"),
-        over=pl.col("over_game"),
-        ats=pl.col("away_covers"),
+        win=(pl.col("result_num") < 0),
+        over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
+        ats=(
+            (pl.col("away_score") - pl.col("spread_line") > pl.col("home_score"))
+        ),
     )
 
     stacked = pl.concat([home_rows, away_rows])
@@ -128,12 +103,12 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         stacked.group_by(["season", "team"])
         .agg(
             games=pl.len(),
-            win_pct=pl.col("win").mean(),
-            over_pct=pl.col("over").mean(),
+            win_pct=pl.col("win").mean(),        # mean(bool) == wins/games
+            over_pct=pl.col("over_game").mean(),
             ats_pct=pl.col("ats").mean(),
         )
         .with_columns(
-            # In this MVP definition, Cover% == ATS% (both mean "covered the spread")
+            # In this MVP definition, Cover% == ATS%
             cover_pct=pl.col("ats_pct"),
         )
         .sort(["season", "team"])
@@ -178,14 +153,11 @@ def team_metrics(season: int = Query(default=None)):
     # Frontend expects flat fields: win_pct, over_pct, ats_pct, cover_pct
     records = out.to_dicts()
 
-    # Optional: convert to % on the frontend; or here. We'll do frontend as percent formatting.
-    # If you prefer backend to output 0..100 instead of 0..1, tell me.
-
     return {
         "status": "ok",
         "season": season,
         "metric_definitions": {
-            "win_pct": "Team win rate (straight up)",
+            "win_pct": "Team win rate (straight up). Home uses result > 0; Away uses result < 0.",
             "over_pct": "Over rate: (home_score + away_score) > total_line",
             "ats_pct": "Against the spread win rate from team perspective (cover the spread)",
             "cover_pct": "ATS cover rate (same as ats_pct in this MVP definition)",
