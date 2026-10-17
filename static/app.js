@@ -15,6 +15,9 @@ const seasonSelect = document.getElementById("seasonSelect");
 
 let metrics = [];
 
+// ✅ Force API calls to the correct host
+const API_BASE = "https://seeingtheboardclearly.com/api";
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -107,14 +110,14 @@ higherMarker.addEventListener("input", handleRiskChange);
 
 // ✅ Season loading
 async function fetchSeasons() {
-  const res = await fetch("/api/team_metrics/seasons");
+  const res = await fetch(`${API_BASE}/team_metrics/seasons`);
   if (!res.ok) throw new Error(`HTTP ${res.status} - ${res.statusText}`);
   const data = await res.json();
   return data.seasons || [];
 }
 
 async function fetchMetricsForSeason(season) {
-  const url = `/api/team_metrics?season=${encodeURIComponent(season)}`;
+  const url = `${API_BASE}/team_metrics?season=${encodeURIComponent(season)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} - ${res.statusText}`);
   const data = await res.json();
