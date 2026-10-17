@@ -66,11 +66,26 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         & pl.col("result").is_not_null()
     )
 
+    # --- Debug print (game_id/week are optional; avoid crashing) ---
+    debug_cols = [
+        "game_id",
+        "season",
+        "week",
+        "away_team",
+        "home_team",
+        "away_score",
+        "home_score",
+        "result",
+        "spread_line",
+        "total_line",
+    ]
+    safe_debug_cols = [c for c in debug_cols if c in df.columns]
+    if safe_debug_cols:
+        print(df.select(safe_debug_cols).head(15))
+
     # -----------------------------
-    # ✅ Win% logic (YOUR requested definition)
-    # - If team is HOME: win when result > 0
-    # - If team is AWAY: win when result < 0
-    # - win_pct = total wins / games played
+    # ✅ Win% logic (HOME result > 0; AWAY result < 0)
+    # win_pct = total wins / games played
     # -----------------------------
     df = df.with_columns(
         pl.col("result").cast(pl.Float64, strict=False).alias("result_num")
@@ -82,9 +97,7 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         team=pl.col("home_team"),
         win=(pl.col("result_num") > 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
-        ats=(
-            (pl.col("home_score") + pl.col("spread_line") > pl.col("away_score"))
-        ),
+        ats=((pl.col("home_score") + pl.col("spread_line")) > pl.col("away_score")),
     )
 
     away_rows = df.select(
@@ -92,9 +105,7 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         team=pl.col("away_team"),
         win=(pl.col("result_num") < 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
-        ats=(
-            (pl.col("away_score") - pl.col("spread_line") > pl.col("home_score"))
-        ),
+        ats=((pl.col("away_score") - pl.col("spread_line")) > pl.col("home_score")),
     )
 
     stacked = pl.concat([home_rows, away_rows])
@@ -103,7 +114,7 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         stacked.group_by(["season", "team"])
         .agg(
             games=pl.len(),
-            win_pct=pl.col("win").mean(),        # mean(bool) == wins/games
+            win_pct=pl.col("win").mean(),   # mean(bool) == wins/games
             over_pct=pl.col("over_game").mean(),
             ats_pct=pl.col("ats").mean(),
         )
