@@ -97,7 +97,10 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         team=pl.col("home_team"),
         win=(pl.col("result_num") > 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
-        ats=((pl.col("home_score") + pl.col("spread_line")) > pl.col("away_score")),
+        # Home covers if margin beats the spread; None = push
+        ats=pl.when(pl.col("result_num") == pl.col("spread_line"))
+            .then(None)
+            .otherwise(pl.col("result_num") > pl.col("spread_line")),
     )
 
     away_rows = df.select(
@@ -105,7 +108,10 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         team=pl.col("away_team"),
         win=(pl.col("result_num") < 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
-        ats=((pl.col("away_score") - pl.col("spread_line")) > pl.col("home_score")),
+        # Away covers if home margin is less than the spread; None = push
+        ats=pl.when(pl.col("result_num") == pl.col("spread_line"))
+            .then(None)
+            .otherwise(pl.col("result_num") < pl.col("spread_line")),
     )
 
     stacked = pl.concat([home_rows, away_rows])
@@ -114,14 +120,12 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         stacked.group_by(["season", "team"])
         .agg(
             games=pl.len(),
-            win_pct=pl.col("win").mean(),   # mean(bool) == wins/games
+            win_pct=pl.col("win").mean(),
             over_pct=pl.col("over_game").mean(),
-            ats_pct=pl.col("ats").mean(),
+            ats_pct=pl.col("ats").mean(),  # mean() skips nulls, so pushes are excluded
+            pushes=pl.col("ats").is_null().sum(),
         )
-        .with_columns(
-            # In this MVP definition, Cover% == ATS%
-            cover_pct=pl.col("ats_pct"),
-        )
+        .with_columns(cover_pct=pl.col("ats_pct"))
         .sort(["season", "team"])
     )
 
@@ -175,3 +179,21 @@ def team_metrics(season: int = Query(default=None)):
         },
         "teams": records,
     }
+
+
+# ---- Optional API verification hook (non-invasive) ----
+# Run with:
+#   VERIFY_API_ON_START=1 API_BASE_URL="http://127.0.0.1:8000" VERIFY_SEASON=2025 uvicorn main:app --host 127.0.0.1 --port 8000
+import os
+
+if os.environ.get("VERIFY_API_ON_START", "").lower() in ("1", "true", "yes"):
+    try:
+        from verify_api import verify_api
+
+        verification = verify_api(
+            base_url=os.environ.get("API_BASE_URL", "http://127.0.0.1:8000"),
+            season=os.environ.get("VERIFY_SEASON", "2025"),
+        )
+        print("✅ API verification result:", verification)
+    except Exception as e:
+        print("❌ API verification failed:", str(e))
