@@ -1,6 +1,0 @@
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET / HTTP/1.1" 500 Internal Server Error
-INFO:     2a09:2dc2:0:5916:::0 - "GET / HTTP/1.1" 500 Internal Server Error
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/install.php?step=1 HTTP/1.1" 404 Not Found
-INFO:     44.202.15.53:0 - "GET / HTTP/1.1" 500 Internal Server Error
-INFO:     44.202.15.53:0 - "GET / HTTP/1.1" 500 Internal Server Error
-INFO:     2a09:2dc2:0:5916:::0 - "GET / HTTP/1.1" 500 Internal Server Error
