@@ -20,7 +20,7 @@ app.add_middleware(
 
 # --- Static + Frontend ---
 BASE_DIR = Path(__file__).resolve().parent
-static_dir = BASE_DIR / "static"
+static_dir = BASE_DIR
 
 if not static_dir.exists():
     raise RuntimeError(
