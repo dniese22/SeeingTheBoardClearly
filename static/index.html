@@ -1,68 +1,51 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NFL Team Metrics</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
   <div class="container">
-    <h1>Seeing The Board Clearlys</h1>
+
+    <h1>Seeing The Board Clearly</h1>
 
     <div id="status" class="status">Loading...</div>
 
-    <!-- ✅ Risk Scale above the table -->
-    <section class="risk-card" aria-label="Risk scale selector">
+    <div class="risk-card">
       <div class="risk-header">
         <div class="risk-title">Risk Scale</div>
+      </div>
 
-        <div class="risk-values">
-          <span class="pill">Lower Than: <b id="lowerLabel">40%</b></span>
-          <span class="pill">Middle Range</span>
-          <span class="pill">Higher Than: <b id="higherLabel">60%</b></span>
-        </div>
+      <div class="risk-values">
+        <span class="pill">Lower Than: <b id="lowerLabel">40%</b></span>
+        <span class="pill">Higher Than: <b id="higherLabel">60%</b></span>
       </div>
 
       <div class="risk-bar-wrap">
-        <div class="risk-segment lower" id="segLower"></div>
-        <div class="risk-segment middle" id="segMiddle"></div>
-        <div class="risk-segment higher" id="segHigher"></div>
+        <div id="segLower" class="risk-segment lower"></div>
+        <div id="segMiddle" class="risk-segment middle"></div>
+        <div id="segHigher" class="risk-segment higher"></div>
 
-        <!-- Two draggable markers -->
-        <input id="lowerMarker" class="marker-input marker-lower"
-               type="range" min="0" max="100" step="1" value="40" />
-        <input id="higherMarker" class="marker-input marker-higher"
-               type="range" min="0" max="100" step="1" value="60" />
+        <input id="lowerMarker" class="marker-input" type="range" min="0" max="100" value="40" />
+        <input id="higherMarker" class="marker-input" type="range" min="0" max="100" value="60" />
       </div>
 
       <div class="risk-legend">
-        <div class="legend-item">
-          <span class="legend-swatch lower-swatch"></span>
-          <span>Lower Than Range</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-swatch middle-swatch"></span>
-          <span>Middle Range</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-swatch higher-swatch"></span>
-          <span>Higher Than Range</span>
-        </div>
+        <div class="legend-item"><span class="legend-swatch lower-swatch"></span> Lower</div>
+        <div class="legend-item"><span class="legend-swatch middle-swatch"></span> Middle</div>
+        <div class="legend-item"><span class="legend-swatch higher-swatch"></span> Higher</div>
       </div>
-    </section>
+    </div>
 
-    <!-- ✅ Betting Percentages card + season filter -->
-    <section class="table-card" aria-label="Betting Percentages">
+    <div class="table-card">
       <div class="table-header">
         <h2 class="table-title">Betting Percentages</h2>
 
         <div class="season-control">
-          <label for="seasonSelect">Season:</label>
-          <select id="seasonSelect">
-            <!-- populated by app.js -->
-          </select>
+          <label>Season:</label>
+          <select id="seasonSelect"></select>
         </div>
       </div>
 
@@ -75,13 +58,12 @@
             <th>Cover ATS%</th>
           </tr>
         </thead>
-        <tbody id="metricsTbody">
-          <!-- rows injected by app.js -->
-        </tbody>
+        <tbody id="metricsTbody"></tbody>
       </table>
-    </section>
+    </div>
+
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

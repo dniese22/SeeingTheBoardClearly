@@ -1,38 +1,6 @@
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET / HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET /static/app.js HTTP/1.1" 304 Not Modified
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET /static/styles.css HTTP/1.1" 304 Not Modified
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET /api/team_metrics/seasons HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET /api/team_metrics?season=2026 HTTP/1.1" 200 OK
+INFO:     2603:6010:200:1987:9c6d:29ae:dcbe:70b:0 - "GET / HTTP/1.1" 500 Internal Server Error
+INFO:     2a09:2dc2:0:5916:::0 - "GET / HTTP/1.1" 500 Internal Server Error
 INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/install.php?step=1 HTTP/1.1" 404 Not Found
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET / HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /api/team_metrics/seasons HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /api/team_metrics?season=2026 HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /api/team_metrics?season=2025 HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /api/team_metrics?season=2023 HTTP/1.1" 200 OK
-INFO:     206.189.171.121:0 - "GET / HTTP/1.1" 200 OK
-INFO:     2603:6010:200:1987:68de:fa35:457c:3297:0 - "GET /api/team_metrics?season=2026 HTTP/1.1" 200 OK
-INFO:     45.74.159.42:0 - "GET / HTTP/1.1" 200 OK
-INFO:     79.127.129.230:0 - "GET / HTTP/1.1" 200 OK
-INFO:     79.127.129.230:0 - "GET / HTTP/1.1" 200 OK
-INFO:     79.127.129.230:0 - "GET /wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /xmlrpc.php?rsd HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET / HTTP/1.1" 200 OK
-INFO:     79.127.129.230:0 - "GET /blog/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /web/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /wordpress/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /website/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /wp/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /news/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /2018/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /2019/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /shop/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /wp1/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /test/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /media/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /wp2/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /site/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/install.php?step=1 HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /cms/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     79.127.129.230:0 - "GET /sito/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/install.php?step=1 HTTP/1.1" 404 Not Found
+INFO:     44.202.15.53:0 - "GET / HTTP/1.1" 500 Internal Server Error
+INFO:     44.202.15.53:0 - "GET / HTTP/1.1" 500 Internal Server Error
+INFO:     2a09:2dc2:0:5916:::0 - "GET / HTTP/1.1" 500 Internal Server Error
