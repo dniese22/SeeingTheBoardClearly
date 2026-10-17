@@ -105,7 +105,7 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
             games=pl.len(),
             win_pct=pl.col("win").mean(),        # mean(bool) == wins/games
             over_pct=pl.col("over_game").mean(),
-            ats_pct=pl.col("ats"),#.mean(),
+            ats_pct=pl.col("ats").mean(),
         )
         .with_columns(
             # In this MVP definition, Cover% == ATS%
