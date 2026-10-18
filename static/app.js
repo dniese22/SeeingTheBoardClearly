@@ -35,14 +35,9 @@ let selectedTeam = "";
 let highPercentageFilterEnabled = false;
 let requestVersion = 0;
 
-// Cache season results to avoid downloading the same season repeatedly.
 const seasonMetricsCache = new Map();
-
-// Stores each column's visibility preference for the current page session.
-// New columns default to visible.
 const columnVisibility = new Map();
 
-// These keys identify the team column and are not percentage metrics.
 const TEAM_KEYS = [
   "team_name",
   "team",
@@ -51,12 +46,20 @@ const TEAM_KEYS = [
   "team_abbr",
 ];
 
-// Preferred ordering for the most common percentage columns.
 const PREFERRED_METRIC_ORDER = [
   "win_pct",
   "over_pct",
   "ats_pct",
 ];
+
+// Fields that should never appear in the table or column controls.
+const EXCLUDED_METRIC_KEYS = new Set([
+  "cover_pct",
+  "cover_percent",
+  "cover_percentage",
+  "games",
+  "pushes",
+]);
 
 // ------------------------------
 // General helpers
@@ -111,6 +114,11 @@ function formatColumnLabel(key) {
     win_pct: "Win%",
     over_pct: "Over%",
     ats_pct: "Cover ATS%",
+    cover_pct: "Cover Pct",
+    cover_percent: "Cover Pct",
+    cover_percentage: "Cover Pct",
+    games: "Games",
+    pushes: "Pushes",
   };
 
   if (knownLabels[key]) {
@@ -139,22 +147,25 @@ function isTeamKey(key) {
 }
 
 function isExcludedMetricKey(key) {
-  const excludedKeys = new Set([
-    "cover_pct",
-    "cover_percent",
-    "games",
-    "pushes",
-  ]);
+  const normalizedKey = String(key)
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  const label = formatColumnLabel(key).toLowerCase();
 
   return (
     isTeamKey(key) ||
     key === "season" ||
     key.startsWith("_") ||
-    excludedKeys.has(key.toLowerCase())
+    EXCLUDED_METRIC_KEYS.has(normalizedKey) ||
+    label === "cover pct" ||
+    label === "games" ||
+    label === "pushes"
   );
+}
 
-// Find every metric returned by the API across the currently loaded data.
-// This allows newly added API fields to appear automatically.
+// Find all available metric fields across the loaded data.
+// Excluded fields are removed before table columns are created.
 function getMetricKeys(rows) {
   const keys = new Set();
 
@@ -198,7 +209,7 @@ function getTableColumns() {
     });
   }
 
-  // The Team column is always present and cannot be toggled off.
+  // Team is always visible and cannot be toggled off.
   columns.push({
     key: "team_name",
     label: "Team",
@@ -432,12 +443,17 @@ function renderColumnToggles(columns) {
   columnToggles.replaceChildren();
 
   columns.forEach((column) => {
-    // Team must always remain visible and is not a toggle option.
+    // Never offer Team as a toggle.
     if (column.type === "team" || column.key === "team_name") {
       return;
     }
 
-    // New columns are visible by default.
+    // Excluded fields are never offered as toggles.
+    if (isExcludedMetricKey(column.key)) {
+      return;
+    }
+
+    // New columns default to visible.
     if (!columnVisibility.has(column.key)) {
       columnVisibility.set(column.key, true);
     }
@@ -483,9 +499,8 @@ function renderColumnToggles(columns) {
 function applyColumnVisibility() {
   const columns = getTableColumns();
 
-  // Apply visibility to headers and their corresponding cells.
   columns.forEach((column, index) => {
-    // Team is always visible, regardless of any stored preferences.
+    // Team always remains visible.
     const visible =
       column.type === "team" ||
       columnVisibility.get(column.key) !== false;
@@ -631,8 +646,6 @@ function applyPercentageFilter() {
   rows.forEach((row) => {
     const cells = row.querySelectorAll("td.metric-cell");
 
-    // Determine whether this row has at least one percentage at
-    // or above the current Higher Than threshold.
     const hasQualifyingPercentage = Array.from(cells).some(
       (cell) => {
         if (cell.dataset.percentage === "") {
@@ -645,8 +658,8 @@ function applyPercentageFilter() {
       }
     );
 
-    // When enabled, hide the entire row if none of its percentages
-    // meet the threshold.
+    // If filtering is enabled, hide rows where no percentage
+    // reaches the selected Higher Than threshold.
     row.hidden =
       highPercentageFilterEnabled &&
       cells.length > 0 &&
@@ -659,7 +672,6 @@ function applyPercentageFilter() {
         "val-green"
       );
 
-      // Restore the original value before reapplying the filter.
       cell.textContent = cell.dataset.originalText;
 
       if (cell.dataset.percentage === "") {
@@ -680,7 +692,7 @@ function applyPercentageFilter() {
         return;
       }
 
-      // Preserve the risk-scale coloring.
+      // Apply risk-scale coloring.
       if (value < lower) {
         cell.classList.add("val-red");
       } else if (value > higher) {
@@ -712,7 +724,6 @@ async function loadSelectedSeason() {
 
     const rows = await fetchMetricsForSeason(season);
 
-    // Ignore results from a previous selection.
     if (
       version !== requestVersion ||
       selectedTeam !== ""
@@ -748,12 +759,10 @@ async function loadSelectedTeamHistory() {
     statusEl.textContent =
       `Loading historical statistics for ${team}...`;
 
-    // Fetch all available seasons. Cached seasons load immediately.
     const results = await Promise.all(
       seasons.map((season) => fetchMetricsForSeason(season))
     );
 
-    // Ignore results if the selection changed during loading.
     if (
       version !== requestVersion ||
       selectedTeam !== team
@@ -790,11 +799,9 @@ function handleTeamChange() {
   selectedTeam = teamSelect.value;
 
   if (selectedTeam) {
-    // A selected team always displays all available seasons.
     seasonSelect.disabled = true;
     loadSelectedTeamHistory();
   } else {
-    // All Teams restores the selected single-season view.
     seasonSelect.disabled = false;
     loadSelectedSeason();
   }
@@ -806,7 +813,6 @@ function handleRiskChange() {
     Number(higherMarker.value)
   );
 
-  // Recalculate visible cells and rows immediately.
   applyPercentageFilter();
 }
 
