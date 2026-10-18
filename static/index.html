@@ -1,10 +1,10 @@
 
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NFL Team Metrics</title>
+  <title>Seeing The Board Clearly</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -25,6 +25,7 @@
         <span class="pill">
           Lower Than: <b id="lowerLabel">40%</b>
         </span>
+
         <span class="pill">
           Higher Than: <b id="higherLabel">60%</b>
         </span>
@@ -61,10 +62,12 @@
           <span class="legend-swatch lower-swatch"></span>
           Lower
         </div>
+
         <div class="legend-item">
           <span class="legend-swatch middle-swatch"></span>
           Middle
         </div>
+
         <div class="legend-item">
           <span class="legend-swatch higher-swatch"></span>
           Higher
@@ -82,13 +85,24 @@
             class="filter-toggle"
             type="button"
             aria-pressed="false"
-            title="Hide percentage values below the Higher Than threshold"
+            title="Show only percentages at or above the Higher Than threshold"
           >
-            <span class="toggle-indicator" aria-hidden="true"></span>
+            <span
+              class="toggle-indicator"
+              aria-hidden="true"
+            ></span>
+
             <span id="highPercentageToggleLabel">
               Filter ≥ Higher Than: Off
             </span>
           </button>
+
+          <div class="season-control">
+            <label for="teamSelect">Team:</label>
+            <select id="teamSelect">
+              <option value="">Loading teams...</option>
+            </select>
+          </div>
 
           <div class="season-control">
             <label for="seasonSelect">Season:</label>
@@ -99,13 +113,14 @@
 
       <table id="metricsTable">
         <thead>
-          <tr>
+          <tr id="metricsHeaderRow">
             <th>Team</th>
             <th>Win%</th>
             <th>Over%</th>
             <th>Cover ATS%</th>
           </tr>
         </thead>
+
         <tbody id="metricsTbody"></tbody>
       </table>
     </div>
