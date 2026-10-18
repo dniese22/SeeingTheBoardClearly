@@ -5,7 +5,6 @@ const headerRow = document.getElementById("metricsHeaderRow");
 
 const lowerMarker = document.getElementById("lowerMarker");
 const higherMarker = document.getElementById("higherMarker");
-
 const lowerLabel = document.getElementById("lowerLabel");
 const higherLabel = document.getElementById("higherLabel");
 const segLower = document.getElementById("segLower");
@@ -25,6 +24,9 @@ const toggleIndicator = highPercentageToggle.querySelector(
   ".toggle-indicator"
 );
 
+const columnToggles = document.getElementById("columnToggles");
+const showAllColumnsButton = document.getElementById("showAllColumns");
+
 const API_BASE = "https://seeingtheboardclearly.com/api";
 
 let metrics = [];
@@ -35,6 +37,26 @@ let requestVersion = 0;
 
 // Cache season results to avoid downloading the same season repeatedly.
 const seasonMetricsCache = new Map();
+
+// Stores each column's visibility preference for the current page session.
+// New columns default to visible.
+const columnVisibility = new Map();
+
+// These keys identify the team column and are not percentage metrics.
+const TEAM_KEYS = [
+  "team_name",
+  "team",
+  "Team",
+  "abbr",
+  "team_abbr",
+];
+
+// Preferred ordering for the most common percentage columns.
+const PREFERRED_METRIC_ORDER = [
+  "win_pct",
+  "over_pct",
+  "ats_pct",
+];
 
 // ------------------------------
 // General helpers
@@ -76,6 +98,115 @@ function formatPct(value) {
   return percentage === null
     ? "—"
     : `${percentage.toFixed(1)}%`;
+}
+
+function formatColumnLabel(key) {
+  const knownLabels = {
+    season: "Season",
+    team_name: "Team",
+    team: "Team",
+    Team: "Team",
+    abbr: "Team",
+    team_abbr: "Team",
+    win_pct: "Win%",
+    over_pct: "Over%",
+    ats_pct: "Cover ATS%",
+  };
+
+  if (knownLabels[key]) {
+    return knownLabels[key];
+  }
+
+  return String(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function isPercentageColumn(key) {
+  return (
+    /(?:_pct|_percent|_percentage)$/i.test(key) ||
+    key === "win_pct" ||
+    key === "over_pct" ||
+    key === "ats_pct"
+  );
+}
+
+function isTeamKey(key) {
+  return TEAM_KEYS.includes(key);
+}
+
+function isExcludedMetricKey(key) {
+  return (
+    isTeamKey(key) ||
+    key === "season" ||
+    key.startsWith("_")
+  );
+}
+
+// Find every metric returned by the API across the currently loaded data.
+// This allows newly added API fields to appear automatically.
+function getMetricKeys(rows) {
+  const keys = new Set();
+
+  rows.forEach((row) => {
+    Object.keys(row).forEach((key) => {
+      if (!isExcludedMetricKey(key)) {
+        keys.add(key);
+      }
+    });
+  });
+
+  return [...keys].sort((a, b) => {
+    const aIndex = PREFERRED_METRIC_ORDER.indexOf(a);
+    const bIndex = PREFERRED_METRIC_ORDER.indexOf(b);
+
+    if (aIndex !== -1 && bIndex !== -1) {
+      return aIndex - bIndex;
+    }
+
+    if (aIndex !== -1) {
+      return -1;
+    }
+
+    if (bIndex !== -1) {
+      return 1;
+    }
+
+    return formatColumnLabel(a).localeCompare(formatColumnLabel(b));
+  });
+}
+
+function getTableColumns() {
+  const historicalView = selectedTeam !== "";
+  const columns = [];
+
+  if (historicalView) {
+    columns.push({
+      key: "season",
+      label: "Season",
+      type: "season",
+    });
+  }
+
+  // The Team column is always present and cannot be toggled off.
+  columns.push({
+    key: "team_name",
+    label: "Team",
+    type: "team",
+  });
+
+  getMetricKeys(metrics).forEach((key) => {
+    columns.push({
+      key,
+      label: formatColumnLabel(key),
+      type: isPercentageColumn(key) ? "percentage" : "metric",
+    });
+  });
+
+  return columns;
 }
 
 // ------------------------------
@@ -234,6 +365,7 @@ function populateTeamDropdown(teamRows) {
   const allOption = document.createElement("option");
   allOption.value = "";
   allOption.textContent = "All Teams";
+
   teamSelect.appendChild(allOption);
 
   const teams = [
@@ -255,6 +387,127 @@ function populateTeamDropdown(teamRows) {
 }
 
 // ------------------------------
+// Column visibility controls
+// ------------------------------
+
+function styleColumnControls() {
+  if (!columnToggles) {
+    return;
+  }
+
+  Object.assign(columnToggles.style, {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px",
+    marginTop: "10px",
+  });
+
+  if (showAllColumnsButton) {
+    Object.assign(showAllColumnsButton.style, {
+      cursor: "pointer",
+      padding: "6px 10px",
+      borderRadius: "8px",
+      border: "1px solid rgba(255,255,255,0.2)",
+      background: "rgba(255,255,255,0.08)",
+      color: "inherit",
+      fontSize: "12px",
+      fontWeight: "600",
+    });
+  }
+}
+
+function renderColumnToggles(columns) {
+  if (!columnToggles) {
+    return;
+  }
+
+  columnToggles.replaceChildren();
+
+  columns.forEach((column) => {
+    // Team must always remain visible and is not a toggle option.
+    if (column.type === "team" || column.key === "team_name") {
+      return;
+    }
+
+    // New columns are visible by default.
+    if (!columnVisibility.has(column.key)) {
+      columnVisibility.set(column.key, true);
+    }
+
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    const text = document.createElement("span");
+
+    checkbox.type = "checkbox";
+    checkbox.checked = columnVisibility.get(column.key);
+    checkbox.dataset.columnKey = column.key;
+
+    text.textContent = column.label;
+
+    Object.assign(label.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "6px",
+      padding: "6px 9px",
+      borderRadius: "8px",
+      border: "1px solid rgba(255,255,255,0.16)",
+      background: "rgba(255,255,255,0.04)",
+      cursor: "pointer",
+      fontSize: "12px",
+      userSelect: "none",
+    });
+
+    checkbox.style.cursor = "pointer";
+
+    checkbox.addEventListener("change", () => {
+      columnVisibility.set(column.key, checkbox.checked);
+      applyColumnVisibility();
+    });
+
+    label.appendChild(checkbox);
+    label.appendChild(text);
+    columnToggles.appendChild(label);
+  });
+
+  styleColumnControls();
+}
+
+function applyColumnVisibility() {
+  const columns = getTableColumns();
+
+  // Apply visibility to headers and their corresponding cells.
+  columns.forEach((column, index) => {
+    // Team is always visible, regardless of any stored preferences.
+    const visible =
+      column.type === "team" ||
+      columnVisibility.get(column.key) !== false;
+
+    const header = headerRow.children[index];
+
+    if (header) {
+      header.hidden = !visible;
+    }
+
+    Array.from(tbody.querySelectorAll("tr")).forEach((row) => {
+      const cell = row.children[index];
+
+      if (cell) {
+        cell.hidden = !visible;
+      }
+    });
+  });
+}
+
+function showAllColumns() {
+  getTableColumns().forEach((column) => {
+    columnVisibility.set(column.key, true);
+  });
+
+  renderTable();
+}
+
+// ------------------------------
 // Table rendering
 // ------------------------------
 
@@ -270,19 +523,41 @@ function createCell(text, className = "") {
   return cell;
 }
 
+function getDisplayValue(row, column) {
+  if (column.type === "season") {
+    return String(row.season ?? "—");
+  }
+
+  if (column.type === "team") {
+    return getTeamName(row);
+  }
+
+  const value = row[column.key];
+
+  if (column.type === "percentage") {
+    return formatPct(value);
+  }
+
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  return String(value);
+}
+
 function renderTable() {
   tbody.replaceChildren();
   headerRow.replaceChildren();
 
+  const columns = getTableColumns();
   const historicalView = selectedTeam !== "";
-
-  const columns = historicalView
-    ? ["Season", "Team", "Win%", "Over%", "Cover ATS%"]
-    : ["Team", "Win%", "Over%", "Cover ATS%"];
 
   columns.forEach((column) => {
     const th = document.createElement("th");
-    th.textContent = column;
+
+    th.textContent = column.label;
+    th.dataset.columnKey = column.key;
+
     headerRow.appendChild(th);
   });
 
@@ -298,38 +573,32 @@ function renderTable() {
     row.appendChild(cell);
     tbody.appendChild(row);
 
+    renderColumnToggles(columns);
+    applyColumnVisibility();
+
     return;
   }
 
   metrics.forEach((data) => {
     const row = document.createElement("tr");
 
-    if (historicalView) {
-      row.appendChild(
-        createCell(String(data.season ?? "—"))
-      );
-    }
-
-    row.appendChild(createCell(getTeamName(data)));
-
-    const percentageColumns = [
-      ["win_pct", data.win_pct],
-      ["over_pct", data.over_pct],
-      ["ats_pct", data.ats_pct],
-    ];
-
-    percentageColumns.forEach(([metricName, rawValue]) => {
+    columns.forEach((column) => {
+      const value = getDisplayValue(data, column);
       const cell = createCell(
-        formatPct(rawValue),
-        "metric-cell"
+        value,
+        column.type === "percentage" ? "metric-cell" : ""
       );
 
-      const percentage = getPercentageValue(rawValue);
+      cell.dataset.columnKey = column.key;
 
-      cell.dataset.metric = metricName;
-      cell.dataset.percentage =
-        percentage === null ? "" : String(percentage);
-      cell.dataset.originalText = formatPct(rawValue);
+      if (column.type === "percentage") {
+        const percentage = getPercentageValue(data[column.key]);
+
+        cell.dataset.metric = column.key;
+        cell.dataset.percentage =
+          percentage === null ? "" : String(percentage);
+        cell.dataset.originalText = value;
+      }
 
       row.appendChild(cell);
     });
@@ -337,7 +606,9 @@ function renderTable() {
     tbody.appendChild(row);
   });
 
+  renderColumnToggles(columns);
   applyPercentageFilter();
+  applyColumnVisibility();
 }
 
 // ------------------------------
@@ -353,8 +624,8 @@ function applyPercentageFilter() {
   rows.forEach((row) => {
     const cells = row.querySelectorAll("td.metric-cell");
 
-    // Does this row have at least one percentage at or above
-    // the current Higher Than threshold?
+    // Determine whether this row has at least one percentage at
+    // or above the current Higher Than threshold.
     const hasQualifyingPercentage = Array.from(cells).some(
       (cell) => {
         if (cell.dataset.percentage === "") {
@@ -367,10 +638,11 @@ function applyPercentageFilter() {
       }
     );
 
-    // If the toggle is on, hide the entire row when no percentage
-    // meets the threshold.
+    // When enabled, hide the entire row if none of its percentages
+    // meet the threshold.
     row.hidden =
       highPercentageFilterEnabled &&
+      cells.length > 0 &&
       !hasQualifyingPercentage;
 
     cells.forEach((cell) => {
@@ -380,7 +652,7 @@ function applyPercentageFilter() {
         "val-green"
       );
 
-      // Restore the original value before applying the filter.
+      // Restore the original value before reapplying the filter.
       cell.textContent = cell.dataset.originalText;
 
       if (cell.dataset.percentage === "") {
@@ -401,7 +673,7 @@ function applyPercentageFilter() {
         return;
       }
 
-      // Preserve the existing risk-scale coloring.
+      // Preserve the risk-scale coloring.
       if (value < lower) {
         cell.classList.add("val-red");
       } else if (value > higher) {
@@ -411,6 +683,8 @@ function applyPercentageFilter() {
       }
     });
   });
+
+  applyColumnVisibility();
 }
 
 // ------------------------------
@@ -525,7 +799,7 @@ function handleRiskChange() {
     Number(higherMarker.value)
   );
 
-  // Recalculate both visible cells and visible rows immediately.
+  // Recalculate visible cells and rows immediately.
   applyPercentageFilter();
 }
 
@@ -547,6 +821,13 @@ highPercentageToggle.addEventListener(
   "click",
   handleToggleChange
 );
+
+if (showAllColumnsButton) {
+  showAllColumnsButton.addEventListener(
+    "click",
+    showAllColumns
+  );
+}
 
 // ------------------------------
 // Application initialization
@@ -595,5 +876,6 @@ updateRiskUI(
 );
 
 updateToggleUI();
+styleColumnControls();
 
 init();
