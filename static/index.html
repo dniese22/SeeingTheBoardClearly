@@ -1,17 +1,20 @@
+
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NFL Team Metrics</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
   <div class="container">
-
     <h1>Seeing The Board Clearly</h1>
 
-    <div id="status" class="status">Loading...</div>
+    <div id="status" class="status" role="status" aria-live="polite">
+      Loading...
+    </div>
 
     <div class="risk-card">
       <div class="risk-header">
@@ -19,8 +22,12 @@
       </div>
 
       <div class="risk-values">
-        <span class="pill">Lower Than: <b id="lowerLabel">40%</b></span>
-        <span class="pill">Higher Than: <b id="higherLabel">60%</b></span>
+        <span class="pill">
+          Lower Than: <b id="lowerLabel">40%</b>
+        </span>
+        <span class="pill">
+          Higher Than: <b id="higherLabel">60%</b>
+        </span>
       </div>
 
       <div class="risk-bar-wrap">
@@ -28,14 +35,40 @@
         <div id="segMiddle" class="risk-segment middle"></div>
         <div id="segHigher" class="risk-segment higher"></div>
 
-        <input id="lowerMarker" class="marker-input" type="range" min="0" max="100" value="40" />
-        <input id="higherMarker" class="marker-input" type="range" min="0" max="100" value="60" />
+        <input
+          id="lowerMarker"
+          class="marker-input"
+          type="range"
+          min="0"
+          max="100"
+          value="40"
+          aria-label="Lower risk threshold"
+        />
+
+        <input
+          id="higherMarker"
+          class="marker-input"
+          type="range"
+          min="0"
+          max="100"
+          value="60"
+          aria-label="Higher risk threshold"
+        />
       </div>
 
       <div class="risk-legend">
-        <div class="legend-item"><span class="legend-swatch lower-swatch"></span> Lower</div>
-        <div class="legend-item"><span class="legend-swatch middle-swatch"></span> Middle</div>
-        <div class="legend-item"><span class="legend-swatch higher-swatch"></span> Higher</div>
+        <div class="legend-item">
+          <span class="legend-swatch lower-swatch"></span>
+          Lower
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch middle-swatch"></span>
+          Middle
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch higher-swatch"></span>
+          Higher
+        </div>
       </div>
     </div>
 
@@ -44,24 +77,31 @@
         <h2 class="table-title">Betting Percentages</h2>
 
         <div class="season-control">
-          <label>Season:</label>
+          <label for="teamSelect">Team:</label>
+          <select id="teamSelect">
+            <option value="">Loading teams...</option>
+          </select>
+        </div>
+
+        <div class="season-control">
+          <label for="seasonSelect">Season:</label>
           <select id="seasonSelect"></select>
         </div>
       </div>
 
       <table id="metricsTable">
         <thead>
-          <tr>
+          <tr id="metricsHeaderRow">
             <th>Team</th>
             <th>Win%</th>
             <th>Over%</th>
             <th>Cover ATS%</th>
           </tr>
         </thead>
+
         <tbody id="metricsTbody"></tbody>
       </table>
     </div>
-
   </div>
 
   <script src="app.js"></script>
