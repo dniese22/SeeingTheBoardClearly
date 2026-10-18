@@ -139,12 +139,19 @@ function isTeamKey(key) {
 }
 
 function isExcludedMetricKey(key) {
+  const excludedKeys = new Set([
+    "cover_pct",
+    "cover_percent",
+    "games",
+    "pushes",
+  ]);
+
   return (
     isTeamKey(key) ||
     key === "season" ||
-    key.startsWith("_")
+    key.startsWith("_") ||
+    excludedKeys.has(key.toLowerCase())
   );
-}
 
 // Find every metric returned by the API across the currently loaded data.
 // This allows newly added API fields to appear automatically.
