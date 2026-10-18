@@ -1,6 +1,6 @@
 
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -76,29 +76,36 @@
       <div class="table-header">
         <h2 class="table-title">Betting Percentages</h2>
 
-        <div class="season-control">
-          <label for="teamSelect">Team:</label>
-          <select id="teamSelect">
-            <option value="">Loading teams...</option>
-          </select>
-        </div>
+        <div class="table-controls">
+          <button
+            id="highPercentageToggle"
+            class="filter-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Hide percentage values below the Higher Than threshold"
+          >
+            <span class="toggle-indicator" aria-hidden="true"></span>
+            <span id="highPercentageToggleLabel">
+              Filter ≥ Higher Than: Off
+            </span>
+          </button>
 
-        <div class="season-control">
-          <label for="seasonSelect">Season:</label>
-          <select id="seasonSelect"></select>
+          <div class="season-control">
+            <label for="seasonSelect">Season:</label>
+            <select id="seasonSelect"></select>
+          </div>
         </div>
       </div>
 
       <table id="metricsTable">
         <thead>
-          <tr id="metricsHeaderRow">
+          <tr>
             <th>Team</th>
             <th>Win%</th>
             <th>Over%</th>
             <th>Cover ATS%</th>
           </tr>
         </thead>
-
         <tbody id="metricsTbody"></tbody>
       </table>
     </div>

@@ -1,45 +1,35 @@
 
 const statusEl = document.getElementById("status");
 const tbody = document.getElementById("metricsTbody");
-const headerRow = document.getElementById("metricsHeaderRow");
 
 const lowerMarker = document.getElementById("lowerMarker");
 const higherMarker = document.getElementById("higherMarker");
 
 const lowerLabel = document.getElementById("lowerLabel");
 const higherLabel = document.getElementById("higherLabel");
-
 const segLower = document.getElementById("segLower");
 const segMiddle = document.getElementById("segMiddle");
 const segHigher = document.getElementById("segHigher");
 
 const seasonSelect = document.getElementById("seasonSelect");
-const teamSelect = document.getElementById("teamSelect");
+
+const highPercentageToggle = document.getElementById(
+  "highPercentageToggle"
+);
+const highPercentageToggleLabel = document.getElementById(
+  "highPercentageToggleLabel"
+);
+const toggleIndicator = highPercentageToggle.querySelector(
+  ".toggle-indicator"
+);
+
+let metrics = [];
+let highPercentageFilterEnabled = false;
 
 const API_BASE = "https://seeingtheboardclearly.com/api";
 
-let metrics = [];
-let seasons = [];
-let selectedTeam = "";
-let requestVersion = 0;
-
-// Cache each season after it is retrieved so switching teams
-// does not repeatedly download the same season's statistics.
-const seasonMetricsCache = new Map();
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getTeamName(row) {
-  return (
-    row.team_name ??
-    row.team ??
-    row.Team ??
-    row.abbr ??
-    row.team_abbr ??
-    "Unknown"
-  );
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
 }
 
 function updateRiskUI(lowerPct, higherPct) {
@@ -67,97 +57,175 @@ function updateRiskUI(lowerPct, higherPct) {
 }
 
 function formatPct(value) {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
 
-  const number = Number(value);
+  const n = Number(value);
 
-  if (!Number.isFinite(number)) {
+  if (!Number.isFinite(n)) {
     return "—";
   }
 
-  // The API returns percentages as decimals between 0 and 1.
-  return `${(number * 100).toFixed(1)}%`;
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function getPercentageValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+
+  // API percentages are decimals, e.g. 0.65 = 65%.
+  return n * 100;
+}
+
+function updateToggleUI() {
+  highPercentageToggle.setAttribute(
+    "aria-pressed",
+    String(highPercentageFilterEnabled)
+  );
+
+  highPercentageToggleLabel.textContent =
+    highPercentageFilterEnabled
+      ? "Filter ≥ Higher Than: On"
+      : "Filter ≥ Higher Than: Off";
+
+  highPercentageToggle.style.padding = "9px 13px";
+  highPercentageToggle.style.borderRadius = "12px";
+  highPercentageToggle.style.border =
+    "1px solid rgba(255,255,255,0.22)";
+  highPercentageToggle.style.color = "#e5efff";
+  highPercentageToggle.style.fontWeight = "700";
+  highPercentageToggle.style.fontSize = "13px";
+  highPercentageToggle.style.cursor = "pointer";
+  highPercentageToggle.style.display = "inline-flex";
+  highPercentageToggle.style.alignItems = "center";
+  highPercentageToggle.style.gap = "8px";
+  highPercentageToggle.style.transition = "background 0.2s ease";
+
+  highPercentageToggle.style.background =
+    highPercentageFilterEnabled
+      ? "rgba(34, 197, 94, 0.25)"
+      : "rgba(255,255,255,0.08)";
+
+  toggleIndicator.style.display = "inline-block";
+  toggleIndicator.style.width = "9px";
+  toggleIndicator.style.height = "9px";
+  toggleIndicator.style.borderRadius = "50%";
+  toggleIndicator.style.background =
+    highPercentageFilterEnabled ? "#4ade80" : "#94a3b8";
 }
 
 function applyColoring() {
   const lower = Number(lowerMarker.value);
   const higher = Number(higherMarker.value);
 
-  tbody.querySelectorAll("td.metric-cell").forEach((cell) => {
-    cell.classList.remove("val-red", "val-yellow", "val-green");
+  const rows = tbody.querySelectorAll("tr");
 
-    const text = (cell.textContent || "").trim();
-    const value = Number(text.replace("%", ""));
+  rows.forEach((row) => {
+    const cells = row.querySelectorAll("td.metric-cell");
 
-    if (!Number.isFinite(value)) {
-      return;
-    }
+    // Determine whether at least one percentage in this row
+    // meets or exceeds the Higher Than threshold.
+    const hasQualifyingPercentage = Array.from(cells).some((cell) => {
+      const rawValue = cell.dataset.percentage;
 
-    if (value < lower) {
-      cell.classList.add("val-red");
-    } else if (value > higher) {
-      cell.classList.add("val-green");
-    } else {
-      cell.classList.add("val-yellow");
-    }
+      if (rawValue === "") {
+        return false;
+      }
+
+      const value = Number(rawValue);
+
+      return Number.isFinite(value) && value >= higher;
+    });
+
+    // When filtering is enabled, hide the entire row if none
+    // of its percentages qualify.
+    row.hidden =
+      highPercentageFilterEnabled && !hasQualifyingPercentage;
+
+    cells.forEach((cell) => {
+      cell.classList.remove(
+        "val-red",
+        "val-yellow",
+        "val-green"
+      );
+
+      const rawValue = cell.dataset.percentage;
+      const value = rawValue === "" ? null : Number(rawValue);
+
+      // Restore the original percentage before applying the filter.
+      cell.textContent = cell.dataset.originalText;
+
+      if (value === null || !Number.isFinite(value)) {
+        cell.textContent = "—";
+        return;
+      }
+
+      // Hide individual values below the threshold.
+      if (highPercentageFilterEnabled && value < higher) {
+        cell.textContent = "";
+        return;
+      }
+
+      // Retain the existing risk-scale colors.
+      if (value < lower) {
+        cell.classList.add("val-red");
+      } else if (value > higher) {
+        cell.classList.add("val-green");
+      } else {
+        cell.classList.add("val-yellow");
+      }
+    });
   });
-}
-
-function createCell(value, className = "") {
-  const cell = document.createElement("td");
-
-  if (className) {
-    cell.className = className;
-  }
-
-  cell.textContent = value;
-  return cell;
 }
 
 function renderTable() {
   tbody.replaceChildren();
-  headerRow.replaceChildren();
-
-  const historicalView = selectedTeam !== "";
-
-  // Add the Season column only when viewing one team's history.
-  const columns = historicalView
-    ? ["Season", "Team", "Win%", "Over%", "Cover ATS%"]
-    : ["Team", "Win%", "Over%", "Cover ATS%"];
-
-  columns.forEach((column) => {
-    const th = document.createElement("th");
-    th.textContent = column;
-    headerRow.appendChild(th);
-  });
-
-  if (metrics.length === 0) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-
-    cell.colSpan = columns.length;
-    cell.textContent = historicalView
-      ? `No historical statistics found for ${selectedTeam}.`
-      : "No statistics available for this season.";
-
-    row.appendChild(cell);
-    tbody.appendChild(row);
-    return;
-  }
 
   metrics.forEach((row) => {
+    const team =
+      row.team_name ??
+      row.team ??
+      row.Team ??
+      row.abbr ??
+      row.team_abbr ??
+      "Unknown";
+
     const tr = document.createElement("tr");
 
-    if (historicalView) {
-      tr.appendChild(createCell(String(row.season ?? "—")));
-    }
+    const teamCell = document.createElement("td");
+    teamCell.textContent = team;
+    tr.appendChild(teamCell);
 
-    tr.appendChild(createCell(getTeamName(row)));
-    tr.appendChild(createCell(formatPct(row.win_pct), "metric-cell"));
-    tr.appendChild(createCell(formatPct(row.over_pct), "metric-cell"));
-    tr.appendChild(createCell(formatPct(row.ats_pct), "metric-cell"));
+    const percentageColumns = [
+      ["win_pct", row.win_pct],
+      ["over_pct", row.over_pct],
+      ["ats_pct", row.ats_pct],
+    ];
+
+    percentageColumns.forEach(([metricName, rawValue]) => {
+      const cell = document.createElement("td");
+
+      cell.classList.add("metric-cell");
+      cell.dataset.metric = metricName;
+
+      const value = getPercentageValue(rawValue);
+
+      cell.dataset.percentage =
+        value === null ? "" : String(value);
+
+      cell.dataset.originalText = formatPct(rawValue);
+      cell.textContent = cell.dataset.originalText;
+
+      tr.appendChild(cell);
+    });
 
     tbody.appendChild(tr);
   });
@@ -165,226 +233,111 @@ function renderTable() {
   applyColoring();
 }
 
-async function fetchJSON(url) {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} - ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-async function fetchSeasons() {
-  const data = await fetchJSON(
-    `${API_BASE}/team_metrics/seasons`
-  );
-
-  if (data.status && data.status !== "ok") {
-    throw new Error(data.message || "Unable to load seasons.");
-  }
-
-  return (data.seasons || [])
-    .map(Number)
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
-}
-
-async function fetchMetricsForSeason(season) {
-  if (seasonMetricsCache.has(season)) {
-    return seasonMetricsCache.get(season);
-  }
-
-  const url =
-    `${API_BASE}/team_metrics?season=${encodeURIComponent(season)}`;
-
-  const data = await fetchJSON(url);
-
-  if (data.status !== "ok") {
-    throw new Error(data.message || `Unable to load season ${season}.`);
-  }
-
-  const rows = (data.teams || []).map((row) => ({
-    ...row,
-    season: row.season ?? season,
-  }));
-
-  seasonMetricsCache.set(season, rows);
-
-  return rows;
-}
-
-function populateSeasonDropdown() {
-  seasonSelect.replaceChildren();
-
-  seasons.forEach((season) => {
-    const option = document.createElement("option");
-    option.value = String(season);
-    option.textContent = String(season);
-    seasonSelect.appendChild(option);
-  });
-
-  if (seasons.length > 0) {
-    seasonSelect.value = String(seasons[seasons.length - 1]);
-  }
-}
-
-function populateTeamDropdown(teamRows) {
-  teamSelect.replaceChildren();
-
-  const allTeamsOption = document.createElement("option");
-  allTeamsOption.value = "";
-  allTeamsOption.textContent = "All Teams";
-  teamSelect.appendChild(allTeamsOption);
-
-  const teamNames = [
-    ...new Set(
-      teamRows
-        .map(getTeamName)
-        .filter((name) => name && name !== "Unknown")
-    ),
-  ].sort((a, b) => a.localeCompare(b));
-
-  teamNames.forEach((team) => {
-    const option = document.createElement("option");
-    option.value = team;
-    option.textContent = team;
-    teamSelect.appendChild(option);
-  });
-}
-
-async function loadSelectedSeason() {
-  const version = ++requestVersion;
-  const season = Number(seasonSelect.value);
-
-  if (!Number.isFinite(season)) {
-    return;
-  }
-
-  try {
-    statusEl.textContent = `Loading metrics for season ${season}...`;
-
-    const rows = await fetchMetricsForSeason(season);
-
-    // Ignore stale responses if the user changes selections quickly.
-    if (version !== requestVersion || selectedTeam !== "") {
-      return;
-    }
-
-    metrics = rows;
-
-    statusEl.textContent =
-      `Loaded ${metrics.length} teams for ${season}.`;
-
-    renderTable();
-  } catch (error) {
-    if (version !== requestVersion) {
-      return;
-    }
-
-    console.error(error);
-    statusEl.textContent = `Failed: ${error.message}`;
-  }
-}
-
-async function loadSelectedTeamHistory() {
-  const version = ++requestVersion;
-  const team = selectedTeam;
-
-  try {
-    statusEl.textContent =
-      `Loading historical statistics for ${team}...`;
-
-    // Load all available seasons, using cached results when possible.
-    const seasonResults = await Promise.all(
-      seasons.map((season) => fetchMetricsForSeason(season))
-    );
-
-    if (version !== requestVersion || selectedTeam !== team) {
-      return;
-    }
-
-    metrics = seasonResults
-      .flat()
-      .filter((row) => getTeamName(row) === team)
-      .sort((a, b) => Number(b.season) - Number(a.season));
-
-    statusEl.textContent =
-      `Loaded ${metrics.length} seasons for ${team}.`;
-
-    renderTable();
-  } catch (error) {
-    if (version !== requestVersion) {
-      return;
-    }
-
-    console.error(error);
-    statusEl.textContent = `Failed: ${error.message}`;
-  }
-}
-
-function handleTeamChange() {
-  selectedTeam = teamSelect.value;
-
-  if (selectedTeam) {
-    // A team selection always shows every available season.
-    seasonSelect.disabled = true;
-    loadSelectedTeamHistory();
-  } else {
-    // Restore the original all-teams, single-season view.
-    seasonSelect.disabled = false;
-    loadSelectedSeason();
-  }
-}
-
 function handleRiskChange() {
   updateRiskUI(lowerMarker.value, higherMarker.value);
+  applyColoring();
+}
+
+function handleHighPercentageToggle() {
+  highPercentageFilterEnabled = !highPercentageFilterEnabled;
+
+  updateToggleUI();
   applyColoring();
 }
 
 lowerMarker.addEventListener("input", handleRiskChange);
 higherMarker.addEventListener("input", handleRiskChange);
 
-teamSelect.addEventListener("change", handleTeamChange);
-seasonSelect.addEventListener("change", loadSelectedSeason);
+highPercentageToggle.addEventListener(
+  "click",
+  handleHighPercentageToggle
+);
+
+async function fetchSeasons() {
+  const res = await fetch(`${API_BASE}/team_metrics/seasons`);
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} - ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return data.seasons || [];
+}
+
+async function fetchMetricsForSeason(season) {
+  const url =
+    `${API_BASE}/team_metrics?season=${encodeURIComponent(season)}`;
+
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} - ${res.statusText}`);
+  }
+
+  const data = await res.json();
+
+  if (data.status !== "ok") {
+    throw new Error(data.message || "API error");
+  }
+
+  return data.teams || [];
+}
+
+async function loadSeason(season) {
+  statusEl.textContent = `Loading metrics for season ${season}...`;
+
+  try {
+    metrics = await fetchMetricsForSeason(season);
+
+    statusEl.textContent =
+      `Loaded ${metrics.length} teams for ${season}.`;
+
+    renderTable();
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = `Failed: ${err.message}`;
+  }
+}
 
 async function init() {
   try {
     statusEl.textContent = "Loading seasons...";
 
-    seasons = await fetchSeasons();
+    const seasons = await fetchSeasons();
 
-    if (seasons.length === 0) {
-      throw new Error("No seasons returned by the API.");
+    if (!seasons.length) {
+      throw new Error("No seasons returned by API.");
     }
 
-    populateSeasonDropdown();
+    seasonSelect.replaceChildren();
 
-    // Use the most recent season to populate the NFL team list.
-    const latestSeason = seasons[seasons.length - 1];
+    seasons.forEach((season) => {
+      const option = document.createElement("option");
 
-    statusEl.textContent =
-      `Loading teams for season ${latestSeason}...`;
+      option.value = String(season);
+      option.textContent = String(season);
 
-    const latestSeasonRows =
-      await fetchMetricsForSeason(latestSeason);
+      seasonSelect.appendChild(option);
+    });
 
-    populateTeamDropdown(latestSeasonRows);
+    const sortedSeasons = [...seasons].sort(
+      (a, b) => Number(a) - Number(b)
+    );
 
-    selectedTeam = "";
-    seasonSelect.disabled = false;
+    const initial = String(
+      sortedSeasons[sortedSeasons.length - 1]
+    );
 
-    // Initially preserve the existing behavior: all teams,
-    // with the latest season selected.
-    metrics = latestSeasonRows;
+    seasonSelect.value = initial;
 
-    statusEl.textContent =
-      `Loaded ${metrics.length} teams for ${latestSeason}.`;
+    await loadSeason(initial);
 
-    renderTable();
-  } catch (error) {
-    console.error(error);
-    statusEl.textContent = `Failed: ${error.message}`;
+    seasonSelect.addEventListener("change", () => {
+      loadSeason(seasonSelect.value);
+    });
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = `Failed: ${err.message}`;
   }
 }
 
@@ -392,5 +345,7 @@ updateRiskUI(
   Number(lowerMarker.value),
   Number(higherMarker.value)
 );
+
+updateToggleUI();
 
 init();
