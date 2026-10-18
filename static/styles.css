@@ -255,3 +255,18 @@ td.metric-cell.val-green {
   background: rgba(34, 197, 94, 0.22) !important;
   color: #bbf7d0 !important;
 }
+
+/* Append these rules to the end of your existing static/styles.css. */
+.recent-games-control {
+  margin: 14px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+}
+.recent-games-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.recent-games-heading label { font-weight: 700; }
+.recent-games-heading strong { white-space: nowrap; }
+#recentGamesSlider { display: block; width: 100%; accent-color: #60a5fa; cursor: pointer; }
+.recent-games-range { display: flex; justify-content: space-between; color: #aebbd0; font-size: 12px; margin-top: 4px; }
+.recent-games-help { color: #aebbd0; font-size: 12px; line-height: 1.45; margin: 8px 0 0; }
