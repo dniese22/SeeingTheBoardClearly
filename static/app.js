@@ -27,15 +27,26 @@ const toggleIndicator = highPercentageToggle.querySelector(
 const columnToggles = document.getElementById("columnToggles");
 const showAllColumnsButton = document.getElementById("showAllColumns");
 
-const API_BASE = "https://seeingtheboardclearly.com/api";
+const recentGamesSlider = document.getElementById("recentGamesSlider");
+const recentGamesValue = document.getElementById("recentGamesValue");
+const recentGamesMaxLabel = document.getElementById(
+  "recentGamesMaxLabel"
+);
+
+// Use the same origin for local development and deployment.
+const API_BASE = `${window.location.origin}/api`;
 
 let metrics = [];
 let seasons = [];
 let selectedTeam = "";
 let highPercentageFilterEnabled = false;
 let requestVersion = 0;
+let recentGamesRequestTimer = null;
 
+// Cache each season's results separately for each recent-game selection.
 const seasonMetricsCache = new Map();
+
+// Stores column visibility preferences during this page session.
 const columnVisibility = new Map();
 
 const TEAM_KEYS = [
@@ -52,7 +63,6 @@ const PREFERRED_METRIC_ORDER = [
   "ats_pct",
 ];
 
-// Fields that should never appear in the table or column controls.
 const EXCLUDED_METRIC_KEYS = new Set([
   "cover_pct",
   "cover_percent",
@@ -134,12 +144,7 @@ function formatColumnLabel(key) {
 }
 
 function isPercentageColumn(key) {
-  return (
-    /(?:_pct|_percent|_percentage)$/i.test(key) ||
-    key === "win_pct" ||
-    key === "over_pct" ||
-    key === "ats_pct"
-  );
+  return /(?:_pct|_percent|_percentage)$/i.test(key);
 }
 
 function isTeamKey(key) {
@@ -164,8 +169,7 @@ function isExcludedMetricKey(key) {
   );
 }
 
-// Find all available metric fields across the loaded data.
-// Excluded fields are removed before table columns are created.
+// Automatically discover metric columns from the API response.
 function getMetricKeys(rows) {
   const keys = new Set();
 
@@ -198,10 +202,9 @@ function getMetricKeys(rows) {
 }
 
 function getTableColumns() {
-  const historicalView = selectedTeam !== "";
   const columns = [];
 
-  if (historicalView) {
+  if (selectedTeam !== "") {
     columns.push({
       key: "season",
       label: "Season",
@@ -209,7 +212,7 @@ function getTableColumns() {
     });
   }
 
-  // Team is always visible and cannot be toggled off.
+  // Team remains visible and is not a toggle option.
   columns.push({
     key: "team_name",
     label: "Team",
@@ -225,6 +228,59 @@ function getTableColumns() {
   });
 
   return columns;
+}
+
+// ------------------------------
+// Recent-games slider
+// ------------------------------
+
+function updateRecentGamesLabel() {
+  const selectedGames = Number(recentGamesSlider.value);
+  const maxGames = Number(recentGamesSlider.max);
+
+  recentGamesValue.textContent =
+    selectedGames >= maxGames
+      ? `Last ${selectedGames} games (maximum)`
+      : `Last ${selectedGames} games`;
+
+  recentGamesMaxLabel.textContent =
+    `Maximum: ${maxGames} ${maxGames === 1 ? "game" : "games"}`;
+}
+
+function updateRecentGamesBounds(maxGames, setToMaximum = false) {
+  // The slider must always have a valid range beginning at one.
+  maxGames = Math.max(1, Math.floor(Number(maxGames) || 1));
+
+  const currentValue = Number(recentGamesSlider.value);
+
+  recentGamesSlider.min = "1";
+  recentGamesSlider.max = String(maxGames);
+
+  let nextValue = setToMaximum ? maxGames : currentValue;
+  nextValue = clamp(nextValue, 1, maxGames);
+
+  recentGamesSlider.value = String(nextValue);
+
+  updateRecentGamesLabel();
+}
+
+function scheduleRecentGamesReload() {
+  updateRecentGamesLabel();
+
+  if (recentGamesRequestTimer !== null) {
+    clearTimeout(recentGamesRequestTimer);
+  }
+
+  // Avoid sending a request for every tiny movement while dragging.
+  recentGamesRequestTimer = setTimeout(() => {
+    recentGamesRequestTimer = null;
+
+    if (selectedTeam) {
+      loadSelectedTeamHistory();
+    } else {
+      loadSelectedSeason();
+    }
+  }, 150);
 }
 
 // ------------------------------
@@ -330,15 +386,25 @@ async function fetchSeasons() {
   )].sort((a, b) => a - b);
 }
 
-async function fetchMetricsForSeason(season) {
-  if (seasonMetricsCache.has(season)) {
-    return seasonMetricsCache.get(season);
+async function fetchMetricsForSeason(season, lastNGames = null) {
+  const cacheKey =
+    `${season}:${lastNGames === null ? "all" : lastNGames}`;
+
+  if (seasonMetricsCache.has(cacheKey)) {
+    return seasonMetricsCache.get(cacheKey);
   }
 
-  const url =
-    `${API_BASE}/team_metrics?season=${encodeURIComponent(season)}`;
+  const params = new URLSearchParams({
+    season: String(season),
+  });
 
-  const data = await fetchJSON(url);
+  if (lastNGames !== null) {
+    params.set("last_n_games", String(lastNGames));
+  }
+
+  const data = await fetchJSON(
+    `${API_BASE}/team_metrics?${params.toString()}`
+  );
 
   if (data.status !== "ok") {
     throw new Error(
@@ -346,14 +412,17 @@ async function fetchMetricsForSeason(season) {
     );
   }
 
-  const rows = (data.teams || []).map((row) => ({
-    ...row,
-    season: row.season ?? season,
-  }));
+  const result = {
+    rows: (data.teams || []).map((row) => ({
+      ...row,
+      season: row.season ?? season,
+    })),
+    maxGames: Number(data.max_games) || 0,
+  };
 
-  seasonMetricsCache.set(season, rows);
+  seasonMetricsCache.set(cacheKey, result);
 
-  return rows;
+  return result;
 }
 
 // ------------------------------
@@ -409,17 +478,14 @@ function populateTeamDropdown(teamRows) {
 // ------------------------------
 
 function styleColumnControls() {
-  if (!columnToggles) {
-    return;
+  if (columnToggles) {
+    Object.assign(columnToggles.style, {
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: "8px",
+    });
   }
-
-  Object.assign(columnToggles.style, {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: "8px",
-    marginTop: "10px",
-  });
 
   if (showAllColumnsButton) {
     Object.assign(showAllColumnsButton.style, {
@@ -443,17 +509,15 @@ function renderColumnToggles(columns) {
   columnToggles.replaceChildren();
 
   columns.forEach((column) => {
-    // Never offer Team as a toggle.
+    // Team is always visible and cannot be toggled off.
     if (column.type === "team" || column.key === "team_name") {
       return;
     }
 
-    // Excluded fields are never offered as toggles.
     if (isExcludedMetricKey(column.key)) {
       return;
     }
 
-    // New columns default to visible.
     if (!columnVisibility.has(column.key)) {
       columnVisibility.set(column.key, true);
     }
@@ -492,15 +556,12 @@ function renderColumnToggles(columns) {
     label.appendChild(text);
     columnToggles.appendChild(label);
   });
-
-  styleColumnControls();
 }
 
 function applyColumnVisibility() {
   const columns = getTableColumns();
 
   columns.forEach((column, index) => {
-    // Team always remains visible.
     const visible =
       column.type === "team" ||
       columnVisibility.get(column.key) !== false;
@@ -523,7 +584,9 @@ function applyColumnVisibility() {
 
 function showAllColumns() {
   getTableColumns().forEach((column) => {
-    columnVisibility.set(column.key, true);
+    if (column.type !== "team" && !isExcludedMetricKey(column.key)) {
+      columnVisibility.set(column.key, true);
+    }
   });
 
   renderTable();
@@ -641,9 +704,7 @@ function applyPercentageFilter() {
   const lower = Number(lowerMarker.value);
   const higher = Number(higherMarker.value);
 
-  const rows = tbody.querySelectorAll("tr");
-
-  rows.forEach((row) => {
+  tbody.querySelectorAll("tr").forEach((row) => {
     const cells = row.querySelectorAll("td.metric-cell");
 
     const hasQualifyingPercentage = Array.from(cells).some(
@@ -658,8 +719,6 @@ function applyPercentageFilter() {
       }
     );
 
-    // If filtering is enabled, hide rows where no percentage
-    // reaches the selected Higher Than threshold.
     row.hidden =
       highPercentageFilterEnabled &&
       cells.length > 0 &&
@@ -686,13 +745,11 @@ function applyPercentageFilter() {
         return;
       }
 
-      // Hide individual percentages below the threshold.
       if (highPercentageFilterEnabled && value < higher) {
         cell.textContent = "";
         return;
       }
 
-      // Apply risk-scale coloring.
       if (value < lower) {
         cell.classList.add("val-red");
       } else if (value > higher) {
@@ -713,6 +770,7 @@ function applyPercentageFilter() {
 async function loadSelectedSeason() {
   const version = ++requestVersion;
   const season = Number(seasonSelect.value);
+  const selectedGames = Number(recentGamesSlider.value);
 
   if (!Number.isFinite(season)) {
     return;
@@ -720,9 +778,12 @@ async function loadSelectedSeason() {
 
   try {
     statusEl.textContent =
-      `Loading metrics for season ${season}...`;
+      `Loading ${selectedGames} recent games for season ${season}...`;
 
-    const rows = await fetchMetricsForSeason(season);
+    const result = await fetchMetricsForSeason(
+      season,
+      selectedGames
+    );
 
     if (
       version !== requestVersion ||
@@ -731,12 +792,16 @@ async function loadSelectedSeason() {
       return;
     }
 
-    metrics = rows;
+    metrics = result.rows;
+
+    // If the selected season has fewer games, clamp the slider.
+    updateRecentGamesBounds(result.maxGames);
 
     renderTable();
 
     statusEl.textContent =
-      `Loaded ${metrics.length} teams for ${season}.`;
+      `Loaded ${metrics.length} teams for ${season}, using up to ` +
+      `${Number(recentGamesSlider.value)} recent games per team.`;
   } catch (error) {
     if (version !== requestVersion) {
       return;
@@ -748,19 +813,22 @@ async function loadSelectedSeason() {
 }
 
 // ------------------------------
-// Loading one team's entire history
+// Loading one team's history
 // ------------------------------
 
 async function loadSelectedTeamHistory() {
   const version = ++requestVersion;
   const team = selectedTeam;
+  const selectedGames = Number(recentGamesSlider.value);
 
   try {
     statusEl.textContent =
-      `Loading historical statistics for ${team}...`;
+      `Loading ${team}'s history using the last ${selectedGames} games per season...`;
 
     const results = await Promise.all(
-      seasons.map((season) => fetchMetricsForSeason(season))
+      seasons.map((season) =>
+        fetchMetricsForSeason(season, selectedGames)
+      )
     );
 
     if (
@@ -770,8 +838,15 @@ async function loadSelectedTeamHistory() {
       return;
     }
 
+    const maxGamesAcrossSeasons = Math.max(
+      1,
+      ...results.map((result) => result.maxGames)
+    );
+
+    updateRecentGamesBounds(maxGamesAcrossSeasons);
+
     metrics = results
-      .flat()
+      .flatMap((result) => result.rows)
       .filter((row) => getTeamName(row) === team)
       .sort(
         (a, b) => Number(b.season) - Number(a.season)
@@ -780,7 +855,8 @@ async function loadSelectedTeamHistory() {
     renderTable();
 
     statusEl.textContent =
-      `Loaded ${metrics.length} seasons for ${team}.`;
+      `Loaded ${metrics.length} seasons for ${team}, using up to ` +
+      `${Number(recentGamesSlider.value)} recent games per season.`;
   } catch (error) {
     if (version !== requestVersion) {
       return;
@@ -799,6 +875,7 @@ function handleTeamChange() {
   selectedTeam = teamSelect.value;
 
   if (selectedTeam) {
+    // Team history shows a row for each season.
     seasonSelect.disabled = true;
     loadSelectedTeamHistory();
   } else {
@@ -824,7 +901,6 @@ function handleToggleChange() {
 }
 
 teamSelect.addEventListener("change", handleTeamChange);
-
 seasonSelect.addEventListener("change", loadSelectedSeason);
 
 lowerMarker.addEventListener("input", handleRiskChange);
@@ -833,6 +909,11 @@ higherMarker.addEventListener("input", handleRiskChange);
 highPercentageToggle.addEventListener(
   "click",
   handleToggleChange
+);
+
+recentGamesSlider.addEventListener(
+  "input",
+  scheduleRecentGamesReload
 );
 
 if (showAllColumnsButton) {
@@ -863,26 +944,37 @@ async function init() {
     statusEl.textContent =
       `Loading teams for season ${latestSeason}...`;
 
-    const latestSeasonRows =
-      await fetchMetricsForSeason(latestSeason);
+    // Load the full season first so we can determine the slider's
+    // correct maximum and preserve the original full-season view.
+    const latestResult = await fetchMetricsForSeason(
+      latestSeason,
+      null
+    );
 
-    populateTeamDropdown(latestSeasonRows);
+    populateTeamDropdown(latestResult.rows);
 
     selectedTeam = "";
     seasonSelect.disabled = false;
 
-    metrics = latestSeasonRows;
+    updateRecentGamesBounds(
+      latestResult.maxGames,
+      true
+    );
+
+    metrics = latestResult.rows;
 
     renderTable();
 
     statusEl.textContent =
-      `Loaded ${metrics.length} teams for ${latestSeason}.`;
+      `Loaded ${metrics.length} teams for ${latestSeason}, ` +
+      `using all available games.`;
   } catch (error) {
     console.error(error);
     statusEl.textContent = `Failed: ${error.message}`;
   }
 }
 
+// Initial UI state.
 updateRiskUI(
   Number(lowerMarker.value),
   Number(higherMarker.value)
@@ -890,5 +982,6 @@ updateRiskUI(
 
 updateToggleUI();
 styleColumnControls();
+updateRecentGamesLabel();
 
 init();

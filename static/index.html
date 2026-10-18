@@ -3,20 +3,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Seeing The Board Clearly</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
 <body>
   <div class="container">
     <h1>Seeing The Board Clearly</h1>
 
-    <div id="status" class="status" role="status" aria-live="polite">
-      Loading...
-    </div>
+    <div id="status" class="status">Loading...</div>
 
-    <div class="risk-card">
+    <!-- Risk scale -->
+    <section class="risk-card">
       <div class="risk-header">
         <div class="risk-title">Risk Scale</div>
       </div>
@@ -70,30 +69,57 @@
           Higher
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="table-card">
+    <!-- Recent games slider -->
+    <section class="risk-card" id="recentGamesCard">
+      <div class="risk-header">
+        <div class="risk-title">Recent Games</div>
+        <div
+          id="recentGamesValue"
+          aria-live="polite"
+          style="font-weight: 800; color: #ffffff;"
+        >
+          All games
+        </div>
+      </div>
+
+      <p style="margin: 0 0 12px; color: #dbeafe; font-size: 13px;">
+        Calculate team percentages using each team's most recent
+        games in the selected season.
+      </p>
+
+      <input
+        id="recentGamesSlider"
+        type="range"
+        min="1"
+        max="17"
+        value="17"
+        step="1"
+        aria-label="Number of recent games"
+        style="display: block; width: 100%; cursor: pointer; accent-color: #60a5fa;"
+      />
+
+      <div
+        style="display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; color: #dbeafe; font-size: 12px;"
+      >
+        <span>1 game</span>
+        <span id="recentGamesMaxLabel">Maximum: 17 games</span>
+      </div>
+    </section>
+
+    <!-- Betting percentages table -->
+    <section class="table-card">
       <div class="table-header">
         <h2 class="table-title">Betting Percentages</h2>
 
-        <div class="table-controls">
-          <button
-            id="highPercentageToggle"
-            class="filter-toggle"
-            type="button"
-            aria-pressed="false"
-            title="Show only percentages at or above the Higher Than threshold"
-          >
-            <span class="toggle-indicator" aria-hidden="true"></span>
-            <span id="highPercentageToggleLabel">
-              Filter ≥ Higher Than: Off
-            </span>
-          </button>
-
+        <div
+          style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;"
+        >
           <div class="season-control">
             <label for="teamSelect">Team:</label>
             <select id="teamSelect">
-              <option value="">Loading teams...</option>
+              <option value="">All Teams</option>
             </select>
           </div>
 
@@ -104,38 +130,54 @@
         </div>
       </div>
 
-      <div class="column-visibility-panel">
-        <div class="column-visibility-heading">
-          <strong>Visible Columns</strong>
-          <button id="showAllColumns" type="button">
-            Show All
-          </button>
+      <!-- Higher Than filter -->
+      <div style="margin: 12px 0;">
+        <button
+          id="highPercentageToggle"
+          type="button"
+          aria-pressed="false"
+        >
+          <span class="toggle-indicator"></span>
+          <span id="highPercentageToggleLabel">
+            Filter ≥ Higher Than: Off
+          </span>
+        </button>
+      </div>
+
+      <!-- Dynamic column visibility -->
+      <div style="margin: 12px 0;">
+        <div style="font-weight: 800; font-size: 13px;">
+          Visible Columns
         </div>
 
         <div
-          id="columnToggles"
-          class="column-toggles"
-          aria-label="Toggle table columns"
+          style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px;"
         >
-          <!-- Generated dynamically from available table columns. -->
+          <div id="columnToggles"></div>
+
+          <button id="showAllColumns" type="button">
+            Show All Columns
+          </button>
         </div>
       </div>
 
-      <table id="metricsTable">
-        <thead>
-          <tr id="metricsHeaderRow">
-            <th>Team</th>
-            <th>Win%</th>
-            <th>Over%</th>
-            <th>Cover ATS%</th>
-          </tr>
-        </thead>
+      <div style="overflow-x: auto;">
+        <table id="metricsTable">
+          <thead>
+            <tr id="metricsHeaderRow">
+              <th>Team</th>
+              <th>Win%</th>
+              <th>Over%</th>
+              <th>Cover ATS%</th>
+            </tr>
+          </thead>
 
-        <tbody id="metricsTbody"></tbody>
-      </table>
-    </div>
+          <tbody id="metricsTbody"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
