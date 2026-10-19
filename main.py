@@ -1,45 +1,69 @@
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import nflreadpy as nfl
 import polars as pl
 
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
 app = FastAPI(title="Seeing The Board Clearly")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
 if not STATIC_DIR.is_dir():
-    raise RuntimeError(f"Static directory not found: {STATIC_DIR}")
+    raise RuntimeError(f"Expected static assets at: {STATIC_DIR}")
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
 def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@lru_cache(maxsize=1)
+def _load_schedules_cached() -> pl.DataFrame:
+    # IMPORTANT: do not pass seasons=True. In Python, True is also integer 1,
+    # which can be interpreted as a request for season 1 instead of all seasons.
+    data = nfl.load_schedules()
+    if not isinstance(data, pl.DataFrame):
+        data = pl.DataFrame(data)
+    return data
+
+
+def _load_schedules() -> pl.DataFrame:
+    # Return a frame from the cached source; Polars transformations below are non-mutating.
+    try:
+        return _load_schedules_cached()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to load NFL schedule data: {exc}") from exc
 
 
 def _compute_team_metrics(schedules: pl.DataFrame, last_n_games: Optional[int] = None) -> pl.DataFrame:
-    """Calculate season metrics from each team's own most recent games."""
-    required = ["season", "home_team", "away_team", "home_score", "away_score", "spread_line", "total_line", "result"]
+    required = [
+        "season", "home_team", "away_team", "home_score", "away_score",
+        "spread_line", "total_line", "result"
+    ]
     missing = [column for column in required if column not in schedules.columns]
     if missing:
-        raise ValueError(f"Schedule data is missing required columns: {', '.join(missing)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"NFL schedule data is missing required columns: {', '.join(missing)}"
+        )
 
-    # Keep available chronology fields so each team's games can be ordered newest-first.
     chronology = [c for c in ("gameday", "game_date", "week", "game_id") if c in schedules.columns]
-    select_cols = required + [c for c in chronology if c not in required]
-    df = schedules.select(select_cols).filter(
+    df = schedules.filter(
         pl.col("home_score").is_not_null()
         & pl.col("away_score").is_not_null()
         & pl.col("spread_line").is_not_null()
@@ -48,28 +72,37 @@ def _compute_team_metrics(schedules: pl.DataFrame, last_n_games: Optional[int] =
         & pl.col("home_team").is_not_null()
         & pl.col("away_team").is_not_null()
         & pl.col("result").is_not_null()
-    ).with_columns(pl.col("result").cast(pl.Float64, strict=False).alias("result_num"))
-    df = df.filter(pl.col("result_num").is_not_null())
+    ).with_columns(pl.col("result").cast(pl.Float64, strict=False).alias("_result_num"))
+    df = df.filter(pl.col("_result_num").is_not_null())
 
     total_points = pl.col("home_score") + pl.col("away_score")
-    home = df.select(
-        season=pl.col("season"), team=pl.col("home_team"),
-        win=(pl.col("result_num") > 0), over_game=(total_points > pl.col("total_line")),
-        ats=pl.when(pl.col("result_num") == pl.col("spread_line")).then(None).otherwise(pl.col("result_num") > pl.col("spread_line")),
-        **{c: pl.col(c) for c in chronology},
-    )
-    away = df.select(
-        season=pl.col("season"), team=pl.col("away_team"),
-        win=(pl.col("result_num") < 0), over_game=(total_points > pl.col("total_line")),
-        ats=pl.when(pl.col("result_num") == pl.col("spread_line")).then(None).otherwise(pl.col("result_num") < pl.col("spread_line")),
-        **{c: pl.col(c) for c in chronology},
-    )
-    team_games = pl.concat([home, away], how="vertical_relaxed")
+    home_exprs = [
+        pl.col("season").alias("season"),
+        pl.col("home_team").alias("team"),
+        (pl.col("_result_num") > 0).alias("win"),
+        (total_points > pl.col("total_line")).alias("over_game"),
+        pl.when(pl.col("_result_num") == pl.col("spread_line"))
+          .then(None)
+          .otherwise(pl.col("_result_num") > pl.col("spread_line"))
+          .alias("ats"),
+    ]
+    away_exprs = [
+        pl.col("season").alias("season"),
+        pl.col("away_team").alias("team"),
+        (pl.col("_result_num") < 0).alias("win"),
+        (total_points > pl.col("total_line")).alias("over_game"),
+        pl.when(pl.col("_result_num") == pl.col("spread_line"))
+          .then(None)
+          .otherwise(pl.col("_result_num") < pl.col("spread_line"))
+          .alias("ats"),
+    ]
+    home_exprs += [pl.col(c).alias(c) for c in chronology]
+    away_exprs += [pl.col(c).alias(c) for c in chronology]
+    team_games = pl.concat([df.select(home_exprs), df.select(away_exprs)], how="vertical_relaxed")
 
     if last_n_games is not None:
         n = max(1, int(last_n_games))
-        # Prefer the game date, then week/game ID when available. NFL schedules
-        # normally include gameday and week; fallback ordering remains deterministic.
+        # Sort by available date/week identifiers newest-first, independently for each team/season.
         sort_cols = ["season", "team"] + chronology
         descending = [False, False] + [True] * len(chronology)
         if chronology:
@@ -82,9 +115,9 @@ def _compute_team_metrics(schedules: pl.DataFrame, last_n_games: Optional[int] =
         team_games.group_by(["season", "team"])
         .agg(
             games=pl.len(),
-            win_pct=pl.col("win").mean(),
-            over_pct=pl.col("over_game").mean(),
-            ats_pct=pl.col("ats").mean(),
+            win_pct=pl.col("win").cast(pl.Float64).mean(),
+            over_pct=pl.col("over_game").cast(pl.Float64).mean(),
+            ats_pct=pl.col("ats").cast(pl.Float64).mean(),
             pushes=pl.col("ats").is_null().sum(),
         )
         .with_columns(cover_pct=pl.col("ats_pct"))
@@ -92,16 +125,20 @@ def _compute_team_metrics(schedules: pl.DataFrame, last_n_games: Optional[int] =
     )
 
 
-def _load_schedules() -> pl.DataFrame:
-    return nfl.load_schedules(seasons=True)
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/api/team_metrics/seasons")
 def team_metrics_seasons():
     schedules = _load_schedules()
     if "season" not in schedules.columns:
-        return {"status": "error", "message": "No 'season' column in schedules data."}
-    seasons = schedules.select(pl.col("season").drop_nulls().unique().sort()).to_series().to_list()
+        raise HTTPException(status_code=500, detail="NFL schedule data has no 'season' column.")
+    seasons = (
+        schedules.select(pl.col("season").drop_nulls().unique().sort())
+        .to_series().to_list()
+    )
     return {"status": "ok", "seasons": seasons}
 
 
@@ -114,15 +151,21 @@ def team_metrics(
     if season is not None:
         schedules = schedules.filter(pl.col("season") == season)
     if schedules.height == 0:
-        return {"status": "ok", "season": season, "last_n_games": last_n_games, "teams": [], "message": "No rows found for that season."}
+        return {
+            "status": "ok", "season": season, "last_n_games": last_n_games,
+            "teams": [], "message": "No rows found for that season."
+        }
+
     out = _compute_team_metrics(schedules, last_n_games=last_n_games)
     return {
-        "status": "ok", "season": season, "last_n_games": last_n_games,
+        "status": "ok",
+        "season": season,
+        "last_n_games": last_n_games,
         "metric_definitions": {
-            "win_pct": "Team win rate (straight up). Home uses result > 0; Away uses result < 0.",
-            "over_pct": "Over rate: (home_score + away_score) > total_line",
+            "win_pct": "Team win rate (straight up).",
+            "over_pct": "Over rate: combined points greater than the total line.",
             "ats_pct": "Against-the-spread win rate from the team's perspective; pushes are excluded.",
-            "cover_pct": "ATS cover rate (same as ats_pct in this MVP definition).",
+            "cover_pct": "ATS cover rate (same as ats_pct).",
         },
         "teams": out.to_dicts(),
     }

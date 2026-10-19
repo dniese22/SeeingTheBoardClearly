@@ -1,18 +1,24 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Seeing The Board Clearly</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <div class="container">
-    <h1>Seeing The Board Clearly</h1>
-    <div id="status" class="status" role="status" aria-live="polite">Loading...</div>
+  <main class="container">
+    <header class="page-header">
+      <div class="eyebrow">NFL PERFORMANCE DASHBOARD</div>
+      <h1>Seeing The Board Clearly</h1>
+      <p class="subtitle">Explore team trends across seasons and betting markets.</p>
+    </header>
 
-    <div class="risk-card">
-      <div class="risk-header"><div class="risk-title">Risk Scale</div></div>
+    <div id="status" class="status" role="status" aria-live="polite">Connecting to NFL data…</div>
+
+    <section class="risk-card" aria-label="Risk scale">
+      <div class="risk-header"><div class="risk-title">Risk Scale</div><span class="risk-caption">Percentage thresholds</span></div>
       <div class="risk-values">
         <span class="pill">Lower Than: <b id="lowerLabel">40%</b></span>
         <span class="pill">Higher Than: <b id="higherLabel">60%</b></span>
@@ -21,49 +27,51 @@
         <div id="segLower" class="risk-segment lower"></div>
         <div id="segMiddle" class="risk-segment middle"></div>
         <div id="segHigher" class="risk-segment higher"></div>
-        <input id="lowerMarker" class="marker-input" type="range" min="0" max="100" value="40" aria-label="Lower risk threshold" />
-        <input id="higherMarker" class="marker-input" type="range" min="0" max="100" value="60" aria-label="Higher risk threshold" />
+        <input id="lowerMarker" class="marker-input" type="range" min="0" max="100" value="40" aria-label="Lower risk threshold">
+        <input id="higherMarker" class="marker-input" type="range" min="0" max="100" value="60" aria-label="Higher risk threshold">
       </div>
       <div class="risk-legend">
         <div class="legend-item"><span class="legend-swatch lower-swatch"></span>Lower</div>
         <div class="legend-item"><span class="legend-swatch middle-swatch"></span>Middle</div>
         <div class="legend-item"><span class="legend-swatch higher-swatch"></span>Higher</div>
       </div>
-    </div>
+    </section>
 
-    <div class="table-card">
+    <section class="table-card">
       <div class="table-header">
-        <h2 class="table-title">Betting Percentages</h2>
+        <div><h2 class="table-title">Betting Percentages</h2><p class="table-subtitle">Team-level results from completed games</p></div>
         <div class="table-controls">
-          <button id="highPercentageToggle" class="filter-toggle" type="button" aria-pressed="false" title="Show only percentages at or above the Higher Than threshold">
+          <button id="highPercentageToggle" class="filter-toggle" type="button" aria-pressed="false">
             <span class="toggle-indicator" aria-hidden="true"></span>
             <span id="highPercentageToggleLabel">Filter ≥ Higher Than: Off</span>
           </button>
-          <div class="season-control"><label for="teamSelect">Team:</label><select id="teamSelect"><option value="">Loading teams...</option></select></div>
-          <div class="season-control"><label for="seasonSelect">Season:</label><select id="seasonSelect"></select></div>
+          <div class="season-control"><label for="teamSelect">Team</label><select id="teamSelect"><option value="">Loading teams…</option></select></div>
+          <div class="season-control"><label for="seasonSelect">Season</label><select id="seasonSelect"></select></div>
         </div>
       </div>
 
       <div id="recentGamesControl" class="recent-games-control">
         <div class="recent-games-heading">
-          <label for="recentGamesSlider">Games included per season</label>
-          <strong><span id="recentGamesValue">18</span> games</strong>
+          <label for="recentGamesSlider">Recent games included per season</label>
+          <strong><span id="recentGamesValue">17</span> games</strong>
         </div>
-        <input id="recentGamesSlider" type="range" min="1" max="18" value="18" step="1" aria-label="Number of most recent games to include per season" />
-        <div class="recent-games-range"><span>1 game</span><span id="recentGamesMaxLabel">18 games</span></div>
-        <p class="recent-games-help">Uses each team's most recent games. When a team is selected, this limit is applied separately to every season in its history.</p>
+        <input id="recentGamesSlider" type="range" min="1" max="17" value="17" step="1" aria-label="Number of most recent games to include">
+        <div class="recent-games-range"><span>1 game</span><span id="recentGamesMaxLabel">17 games</span></div>
+        <p class="recent-games-help">Each team uses its own most recent completed games. Team history applies the limit separately to each season.</p>
       </div>
 
       <div class="column-visibility-panel">
         <div class="column-visibility-heading"><strong>Visible Columns</strong><button id="showAllColumns" type="button">Show All</button></div>
-        <div id="columnToggles" class="column-toggles" aria-label="Toggle table columns"><!-- Generated dynamically. --></div>
+        <div id="columnToggles" class="column-toggles" aria-label="Toggle table columns"></div>
       </div>
-      <table id="metricsTable">
-        <thead><tr id="metricsHeaderRow"><th>Team</th><th>Win%</th><th>Over%</th><th>Cover ATS%</th></tr></thead>
-        <tbody id="metricsTbody"></tbody>
-      </table>
-    </div>
-  </div>
-  <script src="/static/app.js" defer></script>
+      <div class="table-scroll">
+        <table id="metricsTable">
+          <thead><tr id="metricsHeaderRow"><th>Team</th><th>Win%</th><th>Over%</th><th>Cover ATS%</th></tr></thead>
+          <tbody id="metricsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+    <footer class="page-footer">Statistics are calculated from available completed-game schedule data.</footer>
+  </main>
 </body>
 </html>

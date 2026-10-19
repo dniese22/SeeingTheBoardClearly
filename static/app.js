@@ -71,7 +71,11 @@ function updateToggleUI() {
 }
 async function fetchJSON(url) {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+  if (!response.ok) {
+    let detail = `${response.status} - ${response.statusText}`;
+    try { const body = await response.json(); detail = body.detail || body.message || detail; } catch (_) {}
+    throw new Error(detail);
+  }
   return response.json();
 }
 async function fetchSeasons() {
