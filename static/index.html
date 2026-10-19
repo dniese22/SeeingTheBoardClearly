@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Seeing The Board Clearly</title>
-  <!-- Served by FastAPI from the ./static folder mounted at /static -->
-  <link rel="stylesheet" href="/static/styles.css" />
+  <!-- Relative paths: styles.css and app.js sit in the same folder as this file -->
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
@@ -72,7 +72,7 @@
       </div>
     </div>
 
-    <!-- NEW: Previous games window -->
+    <!-- Previous games window -->
     <div class="risk-card games-card">
       <div class="risk-header">
         <div class="risk-title">Previous Games</div>
@@ -175,6 +175,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

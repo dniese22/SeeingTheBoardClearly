@@ -22,7 +22,7 @@ app.add_middleware(
 )
 
 # --- Static + Frontend ---
-# Prefer the ./static folder (index.html, style.css, app.js live together there).
+# Prefer the ./static folder (index.html, styles.css, app.js live together there).
 # Fall back to the project root if index.html is sitting next to main.py.
 BASE_DIR = Path(__file__).resolve().parent
 static_dir = BASE_DIR / "static"
@@ -32,9 +32,10 @@ if not (static_dir / "index.html").exists():
 if not (static_dir / "index.html").exists():
     raise RuntimeError(
         f"index.html not found in '{BASE_DIR / 'static'}' or '{BASE_DIR}'. "
-        f"Put index.html, style.css and app.js together in a 'static' folder next to main.py."
+        f"Put index.html, styles.css and app.js together in a 'static' folder next to main.py."
     )
 
+# Kept so any old /static/... links still work.
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
@@ -230,6 +231,13 @@ def team_metrics(
         },
         "teams": records,
     }
+
+
+# --- Serve the frontend files at the site root ---
+# MUST stay below all @app.get(...) API routes so it never shadows them.
+# This makes the relative links in index.html (styles.css, app.js) resolve
+# to /styles.css and /app.js.
+app.mount("/", StaticFiles(directory=str(static_dir)), name="site")
 
 
 # ---- Optional API verification hook (non-invasive) ----
