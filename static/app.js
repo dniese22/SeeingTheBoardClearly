@@ -1,4 +1,3 @@
-
 const statusEl = document.getElementById("status");
 const tbody = document.getElementById("metricsTbody");
 const headerRow = document.getElementById("metricsHeaderRow");
@@ -10,6 +9,12 @@ const higherLabel = document.getElementById("higherLabel");
 const segLower = document.getElementById("segLower");
 const segMiddle = document.getElementById("segMiddle");
 const segHigher = document.getElementById("segHigher");
+
+// NEW: previous-games slider elements
+const gamesSlider = document.getElementById("gamesSlider");
+const gamesLabel = document.getElementById("gamesLabel");
+const gamesMaxLabel = document.getElementById("gamesMaxLabel");
+const segGames = document.getElementById("segGames");
 
 const teamSelect = document.getElementById("teamSelect");
 const seasonSelect = document.getElementById("seasonSelect");
@@ -27,7 +32,14 @@ const toggleIndicator = highPercentageToggle.querySelector(
 const columnToggles = document.getElementById("columnToggles");
 const showAllColumnsButton = document.getElementById("showAllColumns");
 
-const API_BASE = "https://seeingtheboardclearly.com/api";
+// When running locally (uvicorn), talk to the local API so new backend
+// features can be tested. Otherwise use the live site's API.
+const IS_LOCAL = ["localhost", "127.0.0.1"].includes(
+  window.location.hostname
+);
+const API_BASE = IS_LOCAL
+  ? "/api"
+  : "https://seeingtheboardclearly.com/api";
 
 let metrics = [];
 let seasons = [];
@@ -35,6 +47,16 @@ let selectedTeam = "";
 let highPercentageFilterEnabled = false;
 let requestVersion = 0;
 
+// NEW: previous-games window state
+// gamesMax   = most games any team has played (season, or any season in team-history view)
+// gamesValue = number of most recent games currently included
+// When gamesValue === gamesMax the full season is shown (no last_n sent).
+let gamesMax = null;
+let gamesValue = null;
+let gamesDebounceTimer = null;
+const GAMES_DEBOUNCE_MS = 250;
+
+// Cache key: "<season|all>:<lastN|full>" -> { rows, maxGames }
 const seasonMetricsCache = new Map();
 const columnVisibility = new Map();
 
@@ -256,6 +278,74 @@ function updateRiskUI(lowerPct, higherPct) {
 }
 
 // ------------------------------
+// Previous games slider
+// ------------------------------
+
+// Redraw the slider, labels, and filled bar from gamesMax / gamesValue.
+function updateGamesUI() {
+  if (gamesMax === null || gamesValue === null) {
+    gamesSlider.disabled = true;
+    gamesLabel.textContent = "—";
+    gamesMaxLabel.textContent = "—";
+    segGames.style.width = "0%";
+    return;
+  }
+
+  gamesSlider.disabled = false;
+
+  // Set min/max BEFORE value so the browser doesn't clamp it.
+  gamesSlider.min = "1";
+  gamesSlider.max = String(gamesMax);
+  gamesSlider.value = String(gamesValue);
+
+  gamesLabel.textContent =
+    gamesValue === gamesMax ? `All (${gamesMax})` : String(gamesValue);
+  gamesMaxLabel.textContent = String(gamesMax);
+
+  const span = gamesMax - 1;
+  const percent = span > 0 ? ((gamesValue - 1) / span) * 100 : 100;
+
+  segGames.style.width = `${percent}%`;
+}
+
+// Called whenever a new max is learned (season change, team history, startup).
+// If the slider was at "All", it stays at "All" for the new max.
+// Otherwise the chosen value is kept, clamped to the new max.
+function setGamesBounds(newMax) {
+  if (!Number.isFinite(newMax) || newMax < 1) {
+    gamesMax = null;
+    gamesValue = null;
+  } else {
+    const wasAll =
+      gamesMax === null ||
+      gamesValue === null ||
+      gamesValue >= gamesMax;
+
+    gamesMax = newMax;
+    gamesValue = wasAll ? newMax : clamp(gamesValue, 1, newMax);
+  }
+
+  updateGamesUI();
+}
+
+// The last_n value to send to the API, or null for the full season.
+function effectiveLastN() {
+  if (gamesMax === null || gamesValue === null) {
+    return null;
+  }
+
+  return gamesValue < gamesMax ? gamesValue : null;
+}
+
+function describeWindow(lastN) {
+  if (lastN === null) {
+    return "";
+  }
+
+  return ` (last ${lastN} game${lastN === 1 ? "" : "s"})`;
+}
+
+// ------------------------------
 // Higher Than toggle
 // ------------------------------
 
@@ -330,19 +420,38 @@ async function fetchSeasons() {
   )].sort((a, b) => a - b);
 }
 
-async function fetchMetricsForSeason(season) {
-  if (seasonMetricsCache.has(season)) {
-    return seasonMetricsCache.get(season);
+// Fetch metrics for one season (season = number) or for every season
+// (season = null), optionally limited to each team's last N games
+// (lastN = number, or null for the full season).
+// Returns { rows, maxGames }.
+async function fetchMetrics(season, lastN) {
+  const key = `${season ?? "all"}:${lastN ?? "full"}`;
+
+  if (seasonMetricsCache.has(key)) {
+    return seasonMetricsCache.get(key);
   }
 
-  const url =
-    `${API_BASE}/team_metrics?season=${encodeURIComponent(season)}`;
+  const params = new URLSearchParams();
+
+  if (season !== null) {
+    params.set("season", String(season));
+  }
+
+  if (lastN !== null) {
+    params.set("last_n", String(lastN));
+  }
+
+  const query = params.toString();
+  const url = `${API_BASE}/team_metrics${query ? `?${query}` : ""}`;
 
   const data = await fetchJSON(url);
 
   if (data.status !== "ok") {
     throw new Error(
-      data.message || `Unable to load season ${season}.`
+      data.message ||
+        (season !== null
+          ? `Unable to load season ${season}.`
+          : "Unable to load metrics.")
     );
   }
 
@@ -351,9 +460,16 @@ async function fetchMetricsForSeason(season) {
     season: row.season ?? season,
   }));
 
-  seasonMetricsCache.set(season, rows);
+  // Older backends don't return max_games; treat that as "unknown".
+  const parsedMax = Number(data.max_games);
+  const maxGames =
+    Number.isFinite(parsedMax) && parsedMax >= 1 ? parsedMax : null;
 
-  return rows;
+  const result = { rows, maxGames };
+
+  seasonMetricsCache.set(key, result);
+
+  return result;
 }
 
 // ------------------------------
@@ -722,21 +838,30 @@ async function loadSelectedSeason() {
     statusEl.textContent =
       `Loading metrics for season ${season}...`;
 
-    const rows = await fetchMetricsForSeason(season);
+    // The full-season response tells us the slider maximum.
+    const full = await fetchMetrics(season, null);
 
-    if (
-      version !== requestVersion ||
-      selectedTeam !== ""
-    ) {
+    if (version !== requestVersion || selectedTeam !== "") {
       return;
     }
 
-    metrics = rows;
+    setGamesBounds(full.maxGames);
+
+    const lastN = effectiveLastN();
+
+    const result =
+      lastN === null ? full : await fetchMetrics(season, lastN);
+
+    if (version !== requestVersion || selectedTeam !== "") {
+      return;
+    }
+
+    metrics = result.rows;
 
     renderTable();
 
     statusEl.textContent =
-      `Loaded ${metrics.length} teams for ${season}.`;
+      `Loaded ${metrics.length} teams for ${season}${describeWindow(lastN)}.`;
   } catch (error) {
     if (version !== requestVersion) {
       return;
@@ -759,19 +884,27 @@ async function loadSelectedTeamHistory() {
     statusEl.textContent =
       `Loading historical statistics for ${team}...`;
 
-    const results = await Promise.all(
-      seasons.map((season) => fetchMetricsForSeason(season))
-    );
+    // One request covers every season. The slider maximum is the most
+    // games any team played in any season, and the window is applied to
+    // each season separately.
+    const full = await fetchMetrics(null, null);
 
-    if (
-      version !== requestVersion ||
-      selectedTeam !== team
-    ) {
+    if (version !== requestVersion || selectedTeam !== team) {
       return;
     }
 
-    metrics = results
-      .flat()
+    setGamesBounds(full.maxGames);
+
+    const lastN = effectiveLastN();
+
+    const result =
+      lastN === null ? full : await fetchMetrics(null, lastN);
+
+    if (version !== requestVersion || selectedTeam !== team) {
+      return;
+    }
+
+    metrics = result.rows
       .filter((row) => getTeamName(row) === team)
       .sort(
         (a, b) => Number(b.season) - Number(a.season)
@@ -780,7 +913,7 @@ async function loadSelectedTeamHistory() {
     renderTable();
 
     statusEl.textContent =
-      `Loaded ${metrics.length} seasons for ${team}.`;
+      `Loaded ${metrics.length} seasons for ${team}${describeWindow(lastN)}.`;
   } catch (error) {
     if (version !== requestVersion) {
       return;
@@ -788,6 +921,15 @@ async function loadSelectedTeamHistory() {
 
     console.error(error);
     statusEl.textContent = `Failed: ${error.message}`;
+  }
+}
+
+// Reload whichever view is currently active (season table or team history).
+function loadCurrentView() {
+  if (selectedTeam) {
+    loadSelectedTeamHistory();
+  } else {
+    loadSelectedSeason();
   }
 }
 
@@ -816,6 +958,21 @@ function handleRiskChange() {
   applyPercentageFilter();
 }
 
+// Update the label immediately, but wait for the slider to settle
+// before asking the API for new numbers.
+function handleGamesChange() {
+  if (gamesMax === null) {
+    return;
+  }
+
+  gamesValue = clamp(Number(gamesSlider.value), 1, gamesMax);
+
+  updateGamesUI();
+
+  clearTimeout(gamesDebounceTimer);
+  gamesDebounceTimer = setTimeout(loadCurrentView, GAMES_DEBOUNCE_MS);
+}
+
 function handleToggleChange() {
   highPercentageFilterEnabled = !highPercentageFilterEnabled;
 
@@ -829,6 +986,8 @@ seasonSelect.addEventListener("change", loadSelectedSeason);
 
 lowerMarker.addEventListener("input", handleRiskChange);
 higherMarker.addEventListener("input", handleRiskChange);
+
+gamesSlider.addEventListener("input", handleGamesChange);
 
 highPercentageToggle.addEventListener(
   "click",
@@ -863,15 +1022,16 @@ async function init() {
     statusEl.textContent =
       `Loading teams for season ${latestSeason}...`;
 
-    const latestSeasonRows =
-      await fetchMetricsForSeason(latestSeason);
+    const latest = await fetchMetrics(latestSeason, null);
 
-    populateTeamDropdown(latestSeasonRows);
+    populateTeamDropdown(latest.rows);
 
     selectedTeam = "";
     seasonSelect.disabled = false;
 
-    metrics = latestSeasonRows;
+    setGamesBounds(latest.maxGames);
+
+    metrics = latest.rows;
 
     renderTable();
 
@@ -888,6 +1048,7 @@ updateRiskUI(
   Number(higherMarker.value)
 );
 
+updateGamesUI();
 updateToggleUI();
 styleColumnControls();
 

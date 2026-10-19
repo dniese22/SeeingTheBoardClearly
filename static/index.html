@@ -1,11 +1,11 @@
-
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Seeing The Board Clearly</title>
-  <link rel="stylesheet" href="styles.css" />
+  <!-- Served by FastAPI from the ./static folder mounted at /static -->
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
 <body>
@@ -68,6 +68,45 @@
         <div class="legend-item">
           <span class="legend-swatch higher-swatch"></span>
           Higher
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW: Previous games window -->
+    <div class="risk-card games-card">
+      <div class="risk-header">
+        <div class="risk-title">Previous Games</div>
+      </div>
+
+      <div class="risk-values">
+        <span class="pill">
+          Games Included: <b id="gamesLabel">—</b>
+        </span>
+        <span class="pill">
+          Max This Season: <b id="gamesMaxLabel">—</b>
+        </span>
+      </div>
+
+      <div class="games-bar-wrap">
+        <div id="segGames" class="games-segment"></div>
+
+        <input
+          id="gamesSlider"
+          class="games-input"
+          type="range"
+          min="1"
+          max="17"
+          value="17"
+          step="1"
+          disabled
+          aria-label="Number of most recent games to include"
+        />
+      </div>
+
+      <div class="risk-legend">
+        <div class="legend-item">
+          <span class="legend-swatch games-swatch"></span>
+          Counts back from each team's most recent game
         </div>
       </div>
     </div>
@@ -136,6 +175,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>

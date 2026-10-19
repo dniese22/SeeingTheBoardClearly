@@ -1,11 +1,14 @@
+import os
+import time
+from pathlib import Path
+from typing import Optional
+
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
 import nflreadpy as nfl
 import polars as pl
-from pathlib import Path
 
 app = FastAPI()
 
@@ -19,13 +22,17 @@ app.add_middleware(
 )
 
 # --- Static + Frontend ---
+# Prefer the ./static folder (index.html, style.css, app.js live together there).
+# Fall back to the project root if index.html is sitting next to main.py.
 BASE_DIR = Path(__file__).resolve().parent
-static_dir = BASE_DIR
+static_dir = BASE_DIR / "static"
+if not (static_dir / "index.html").exists():
+    static_dir = BASE_DIR
 
-if not static_dir.exists():
+if not (static_dir / "index.html").exists():
     raise RuntimeError(
-        f"Static directory not found: '{static_dir}'. "
-        f"Create a folder named 'static' next to main.py."
+        f"index.html not found in '{BASE_DIR / 'static'}' or '{BASE_DIR}'. "
+        f"Put index.html, style.css and app.js together in a 'static' folder next to main.py."
     )
 
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -36,13 +43,35 @@ def index():
     return FileResponse(str(static_dir / "index.html"))
 
 
-# --- Helpers ---
-def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
-    """
-    Returns columns:
-      season, team, win_pct, over_pct, ats_pct, cover_pct
-    """
+# --- Schedule cache ---
+# The slider fires a request on every change, so avoid re-downloading the
+# full schedule each time. Refreshes once an hour.
+_SCHEDULE_TTL_SECONDS = 3600
+_schedule_cache = {"loaded_at": 0.0, "df": None}
 
+
+def _get_schedules() -> pl.DataFrame:
+    now = time.time()
+    if _schedule_cache["df"] is None or now - _schedule_cache["loaded_at"] > _SCHEDULE_TTL_SECONDS:
+        _schedule_cache["df"] = nfl.load_schedules(seasons=True)
+        _schedule_cache["loaded_at"] = now
+    return _schedule_cache["df"]
+
+
+# --- Helpers ---
+def _compute_team_metrics(schedules: pl.DataFrame, last_n: Optional[int] = None):
+    """
+    Returns (metrics_df, max_games)
+
+    metrics_df columns:
+        season, team, games, win_pct, over_pct, ats_pct, pushes, cover_pct
+
+    last_n: if provided, only each team's most recent `last_n` played games
+            (within each season) are used. The most recent game is game #1.
+    max_games: the most games any team has played in the data passed in
+               (computed BEFORE the last_n window is applied, so it can be
+               used as the slider maximum).
+    """
     required = [
         "season",
         "home_team",
@@ -53,7 +82,10 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         "total_line",
         "result",
     ]
-    schedules = schedules.select(required)
+    # Used to put each team's games in chronological order
+    order_cols = [c for c in ("week", "gameday") if c in schedules.columns]
+
+    schedules = schedules.select(required + order_cols)
 
     df = schedules.filter(
         pl.col("home_score").is_not_null()
@@ -66,25 +98,8 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         & pl.col("result").is_not_null()
     )
 
-    # --- Debug print (game_id/week are optional; avoid crashing) ---
-    debug_cols = [
-        "game_id",
-        "season",
-        "week",
-        "away_team",
-        "home_team",
-        "away_score",
-        "home_score",
-        "result",
-        "spread_line",
-        "total_line",
-    ]
-    safe_debug_cols = [c for c in debug_cols if c in df.columns]
-    if safe_debug_cols:
-        print(df.select(safe_debug_cols).head(15))
-
     # -----------------------------
-    # ✅ Win% logic (HOME result > 0; AWAY result < 0)
+    # Win% logic (HOME result > 0; AWAY result < 0)
     # win_pct = total wins / games played
     # -----------------------------
     df = df.with_columns(
@@ -92,29 +107,57 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
     )
     df = df.filter(pl.col("result_num").is_not_null())
 
+    order_exprs = [pl.col(c) for c in order_cols]
+
     home_rows = df.select(
+        *order_exprs,
         season=pl.col("season"),
         team=pl.col("home_team"),
         win=(pl.col("result_num") > 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
         # Home covers if margin beats the spread; None = push
         ats=pl.when(pl.col("result_num") == pl.col("spread_line"))
-            .then(None)
-            .otherwise(pl.col("result_num") > pl.col("spread_line")),
+        .then(None)
+        .otherwise(pl.col("result_num") > pl.col("spread_line")),
     )
 
     away_rows = df.select(
+        *order_exprs,
         season=pl.col("season"),
         team=pl.col("away_team"),
         win=(pl.col("result_num") < 0),
         over_game=(pl.col("home_score") + pl.col("away_score") > pl.col("total_line")),
         # Away covers if home margin is less than the spread; None = push
         ats=pl.when(pl.col("result_num") == pl.col("spread_line"))
-            .then(None)
-            .otherwise(pl.col("result_num") < pl.col("spread_line")),
+        .then(None)
+        .otherwise(pl.col("result_num") < pl.col("spread_line")),
     )
 
     stacked = pl.concat([home_rows, away_rows])
+
+    if stacked.height == 0:
+        return stacked, 0
+
+    # --- Order each team's games oldest -> newest, then number them from the
+    #     most recent game backwards (most recent = 1) ---
+    stacked = (
+        stacked.sort(["season", "team"] + order_cols)
+        .with_row_index("_row")
+        .with_columns(
+            games_back=pl.col("_row")
+            .rank("ordinal", descending=True)
+            .over(["season", "team"])
+        )
+    )
+
+    # Max games played by any team (full season, before the window is applied)
+    max_games = int(
+        stacked.group_by(["season", "team"]).len()["len"].max() or 0
+    )
+
+    # --- Apply "last N games" window ---
+    if last_n is not None and last_n > 0:
+        stacked = stacked.filter(pl.col("games_back") <= last_n)
 
     out = (
         stacked.group_by(["season", "team"])
@@ -129,13 +172,14 @@ def _compute_team_metrics(schedules: pl.DataFrame) -> pl.DataFrame:
         .sort(["season", "team"])
     )
 
-    return out
+    return out, max_games
 
 
 # --- API ---
 @app.get("/api/team_metrics/seasons")
 def team_metrics_seasons():
-    schedules = nfl.load_schedules(seasons=True)
+    schedules = _get_schedules()
+
     if "season" not in schedules.columns:
         return {"status": "error", "message": "No 'season' column in schedules data."}
 
@@ -148,8 +192,11 @@ def team_metrics_seasons():
 
 
 @app.get("/api/team_metrics")
-def team_metrics(season: int = Query(default=None)):
-    schedules = nfl.load_schedules(seasons=True)
+def team_metrics(
+    season: int = Query(default=None),
+    last_n: int = Query(default=None, ge=1, description="Only use each team's most recent N games"),
+):
+    schedules = _get_schedules()
 
     if season is not None:
         schedules = schedules.filter(pl.col("season") == season)
@@ -159,11 +206,13 @@ def team_metrics(season: int = Query(default=None)):
         return {
             "status": "ok",
             "season": season,
+            "last_n": last_n,
+            "max_games": 0,
             "teams": [],
             "message": "No rows found for that season.",
         }
 
-    out = _compute_team_metrics(schedules)
+    out, max_games = _compute_team_metrics(schedules, last_n=last_n)
 
     # Frontend expects flat fields: win_pct, over_pct, ats_pct, cover_pct
     records = out.to_dicts()
@@ -171,6 +220,8 @@ def team_metrics(season: int = Query(default=None)):
     return {
         "status": "ok",
         "season": season,
+        "last_n": last_n,
+        "max_games": max_games,
         "metric_definitions": {
             "win_pct": "Team win rate (straight up). Home uses result > 0; Away uses result < 0.",
             "over_pct": "Over rate: (home_score + away_score) > total_line",
@@ -183,9 +234,7 @@ def team_metrics(season: int = Query(default=None)):
 
 # ---- Optional API verification hook (non-invasive) ----
 # Run with:
-#   VERIFY_API_ON_START=1 API_BASE_URL="http://127.0.0.1:8000" VERIFY_SEASON=2025 uvicorn main:app --host 127.0.0.1 --port 8000
-import os
-
+# VERIFY_API_ON_START=1 API_BASE_URL="http://127.0.0.1:8000" VERIFY_SEASON=2025 uvicorn main:app --host 127.0.0.1 --port 8000
 if os.environ.get("VERIFY_API_ON_START", "").lower() in ("1", "true", "yes"):
     try:
         from verify_api import verify_api
