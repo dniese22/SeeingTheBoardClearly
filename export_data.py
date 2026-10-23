@@ -1,94 +1,71 @@
 """
-export_data.py
-
-Generates static JSON files that power the Betting Percentage table,
-so Cloudflare Pages can serve everything with zero backend dependency.
+Generates static JSON files under static/data/ that the frontend
+reads directly (no backend required in production).
 
 Run manually:
     python export_data.py
-
-Run automatically via GitHub Actions — see
-.github/workflows/update-data.yml
-
-Output structure (relative to project root):
-    static/data/seasons.json
-    static/data/<season>/full.json
-    static/data/<season>/<last_n>.json   (last_n = 1..max_games)
 """
-
 import json
 from pathlib import Path
 
-import nflreadpy as nfl
 import polars as pl
 
-from data_logic import compute_team_metrics
+from data_logic import load_schedules, get_seasons, compute_team_metrics
 
-OUTPUT_DIR = Path(__file__).resolve().parent / "static" / "data"
+REPO_ROOT = Path(__file__).resolve().parent
+OUTPUT_DIR = REPO_ROOT / "static" / "data"
 
 
-def _write_json(path: Path, payload: dict):
+def to_payload(out_df: pl.DataFrame, max_games: int) -> dict:
+    """Matches exactly what static/app.js expects: { maxGames, rows }."""
+    rows = out_df.to_dicts() if max_games > 0 else []
+    return {"maxGames": int(max_games), "rows": rows}
+
+
+def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, separators=(",", ":")))
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, separators=(",", ":"))
 
 
-def export_season(schedules: pl.DataFrame, season: int) -> int:
-    season_df = schedules.filter(pl.col("season") == season)
-    if season_df.height == 0:
-        return 0
+def export_full_and_windows(schedules: pl.DataFrame, folder: Path) -> int:
+    """
+    Writes full.json plus every 1..max_games-1 window file for the given
+    schedules slice. Returns max_games so the caller can log it.
+    """
+    full_out, max_games = compute_team_metrics(schedules, last_n=None)
+    write_json(folder / "full.json", to_payload(full_out, max_games))
 
-    # Full-season metrics (also tells us max_games for this season)
-    full_out, max_games = compute_team_metrics(season_df, last_n=None)
-    _write_json(
-        OUTPUT_DIR / str(season) / "full.json",
-        {
-            "status": "ok",
-            "season": season,
-            "last_n": None,
-            "max_games": max_games,
-            "teams": full_out.to_dicts(),
-        },
-    )
-
-    # One file per last_n window (covers every slider position)
-    for last_n in range(1, max_games + 1):
-        out, _ = compute_team_metrics(season_df, last_n=last_n)
-        _write_json(
-            OUTPUT_DIR / str(season) / f"{last_n}.json",
-            {
-                "status": "ok",
-                "season": season,
-                "last_n": last_n,
-                "max_games": max_games,
-                "teams": out.to_dicts(),
-            },
-        )
+    # last_n == max_games is identical to "full" (frontend never requests
+    # it — effectiveLastN() returns null at the max), so only 1..max-1 needed.
+    for last_n in range(1, max_games):
+        windowed_out, _ = compute_team_metrics(schedules, last_n=last_n)
+        write_json(folder / f"{last_n}.json", to_payload(windowed_out, max_games))
 
     return max_games
 
 
-def main():
-    print("Loading schedules...")
-    schedules = nfl.load_schedules(seasons=True)
+def main() -> None:
+    schedules = load_schedules()
+    seasons = get_seasons(schedules)
 
-    seasons = (
-        schedules.select(pl.col("season").drop_nulls().unique().sort())
-        .to_series()
-        .to_list()
-    )
+    # /data/seasons.json -> bare array, as fetchSeasons() expects.
+    write_json(OUTPUT_DIR / "seasons.json", seasons)
+    print(f"seasons.json: {len(seasons)} seasons")
 
-    seasons_payload = {"status": "ok", "seasons": []}
-
+    # Per-season folders: /data/<season>/full.json, /data/<season>/<n>.json
     for season in seasons:
-        print(f"Exporting season {season}...")
-        max_games = export_season(schedules, season)
-        if max_games > 0:
-            seasons_payload["seasons"].append(
-                {"season": season, "max_games": max_games}
-            )
+        season_schedules = schedules.filter(pl.col("season") == season)
+        folder = OUTPUT_DIR / str(int(season))
+        max_games = export_full_and_windows(season_schedules, folder)
+        print(f"season {season}: maxGames={max_games}")
 
-    _write_json(OUTPUT_DIR / "seasons.json", seasons_payload)
-    print(f"✅ Done. Exported {len(seasons_payload['seasons'])} seasons → {OUTPUT_DIR}")
+    # /data/all/... : every (season, team) row, unaggregated across seasons,
+    # windowed per-season (because _compute_team_metrics groups by
+    # [season, team] internally) — matches the "team history" view exactly.
+    all_folder = OUTPUT_DIR / "all"
+    global_max = export_full_and_windows(schedules, all_folder)
+    print(f"all: maxGames={global_max}")
 
 
 if __name__ == "__main__":

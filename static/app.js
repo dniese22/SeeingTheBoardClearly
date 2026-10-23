@@ -32,14 +32,7 @@ const toggleIndicator = highPercentageToggle.querySelector(
 const columnToggles = document.getElementById("columnToggles");
 const showAllColumnsButton = document.getElementById("showAllColumns");
 
-// When running locally (uvicorn), talk to the local API so new backend
-// features can be tested. Otherwise use the live site's API.
-const IS_LOCAL = ["localhost", "127.0.0.1"].includes(
-  window.location.hostname
-);
-const API_BASE = IS_LOCAL
-  ? "/api"
-  : "https://seeingtheboardclearly.com/api";
+
 
 let metrics = [];
 let seasons = [];
@@ -404,26 +397,15 @@ async function fetchJSON(url) {
   return response.json();
 }
 
+// ------------------------------
+// Static data calls (no backend)
+// ------------------------------
+
 async function fetchSeasons() {
-  const data = await fetchJSON(
-    `${API_BASE}/team_metrics/seasons`
-  );
-
-  if (data.status && data.status !== "ok") {
-    throw new Error(data.message || "Unable to load seasons.");
-  }
-
-  return [...new Set(
-    (data.seasons || [])
-      .map(Number)
-      .filter(Number.isFinite)
-  )].sort((a, b) => a - b);
+  const data = await fetchJSON(`/data/seasons.json`);
+  return data;
 }
 
-// Fetch metrics for one season (season = number) or for every season
-// (season = null), optionally limited to each team's last N games
-// (lastN = number, or null for the full season).
-// Returns { rows, maxGames }.
 async function fetchMetrics(season, lastN) {
   const key = `${season ?? "all"}:${lastN ?? "full"}`;
 
@@ -431,45 +413,15 @@ async function fetchMetrics(season, lastN) {
     return seasonMetricsCache.get(key);
   }
 
-  const params = new URLSearchParams();
+  const seasonPath = season ?? "all";
+  const lastNPath = lastN ?? "full";
 
-  if (season !== null) {
-    params.set("season", String(season));
-  }
-
-  if (lastN !== null) {
-    params.set("last_n", String(lastN));
-  }
-
-  const query = params.toString();
-  const url = `${API_BASE}/team_metrics${query ? `?${query}` : ""}`;
+  const url = `/data/${seasonPath}/${lastNPath}.json`;
 
   const data = await fetchJSON(url);
 
-  if (data.status !== "ok") {
-    throw new Error(
-      data.message ||
-        (season !== null
-          ? `Unable to load season ${season}.`
-          : "Unable to load metrics.")
-    );
-  }
-
-  const rows = (data.teams || []).map((row) => ({
-    ...row,
-    season: row.season ?? season,
-  }));
-
-  // Older backends don't return max_games; treat that as "unknown".
-  const parsedMax = Number(data.max_games);
-  const maxGames =
-    Number.isFinite(parsedMax) && parsedMax >= 1 ? parsedMax : null;
-
-  const result = { rows, maxGames };
-
-  seasonMetricsCache.set(key, result);
-
-  return result;
+  seasonMetricsCache.set(key, data);
+  return data;
 }
 
 // ------------------------------
