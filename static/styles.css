@@ -244,12 +244,13 @@ h1 {
 #metricsTable td {
   padding: 10px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.14);
+  text-align: center;
 }
 
 #metricsTable th {
   color: #e5efff;
   background: rgba(255,255,255,0.06);
-  text-align: left;
+  text-align: center;
   font-weight: 800;
 }
 
@@ -259,7 +260,7 @@ h1 {
 }
 
 td.metric-cell {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
