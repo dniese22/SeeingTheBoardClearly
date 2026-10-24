@@ -114,8 +114,9 @@ h1 {
   -webkit-appearance: none;
   appearance: none;
 
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-radius: 50%;
   background: #0b1020;
   border: 2px solid rgba(255,255,255,0.95);
@@ -133,8 +134,9 @@ h1 {
 }
 
 .marker-input::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-radius: 50%;
   background: #0b1020;
   border: 2px solid rgba(255,255,255,0.95);
@@ -322,8 +324,9 @@ td.metric-cell.val-green {
 .games-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-radius: 50%;
   background: #0b1020;
   border: 2px solid rgba(255,255,255,0.95);
@@ -339,8 +342,9 @@ td.metric-cell.val-green {
 }
 
 .games-input::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-radius: 50%;
   background: #0b1020;
   border: 2px solid rgba(255,255,255,0.95);

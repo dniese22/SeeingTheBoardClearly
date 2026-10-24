@@ -202,6 +202,11 @@ function getTableColumns() {
 
   if (currentView === "futures") {
     columns.push({ key: "matchup", label: "Matchup", type: "matchup" });
+    columns.push(
+      { key: "win_pct", label: "Winning Team", type: "team-pick", teamKey: "winning_team" },
+      { key: "over_pct", label: formatColumnLabel("over_pct"), type: "percentage" },
+      { key: "ats_pct", label: "Covering Team", type: "team-pick", teamKey: "covering_team" }
+    );
   } else {
     if (selectedTeam) {
       columns.push({ key: "season", label: "Season", type: "season" });
@@ -212,7 +217,12 @@ function getTableColumns() {
   }
 
   getMetricKeys(metrics)
-    .filter((key) => key !== "matchup")
+    .filter(
+      (key) =>
+        !["matchup", "winning_team", "covering_team"].includes(key) &&
+        (currentView !== "futures" ||
+          !["win_pct", "over_pct", "ats_pct"].includes(key))
+    )
     .forEach((key) => {
       columns.push({
         key,
@@ -388,6 +398,22 @@ function buildFuturesMetrics(games, seasonRows) {
   const teamStats = new Map(seasonRows.map((row) => [getTeamName(row), row]));
   const metricKeys = getMetricKeys(seasonRows);
 
+  function leadingTeam(awayTeam, homeTeam, awayValue, homeValue) {
+    const awayPercentage = Number(awayValue);
+    const homePercentage = Number(homeValue);
+    if (
+      !Number.isFinite(awayPercentage) ||
+      !Number.isFinite(homePercentage) ||
+      awayPercentage === homePercentage
+    ) {
+      return null;
+    }
+
+    return awayPercentage > homePercentage
+      ? { team: awayTeam, percentage: awayPercentage }
+      : { team: homeTeam, percentage: homePercentage };
+  }
+
   return games.map(({ away_team: awayTeam, home_team: homeTeam }) => {
     const awayStats = teamStats.get(awayTeam);
     const homeStats = teamStats.get(homeTeam);
@@ -403,6 +429,17 @@ function buildFuturesMetrics(games, seasonRows) {
         homeValue !== undefined &&
         Number.isFinite(Number(awayValue)) &&
         Number.isFinite(Number(homeValue));
+
+      if (key === "win_pct" || key === "ats_pct") {
+        const leader = bothValuesAvailable
+          ? leadingTeam(awayTeam, homeTeam, awayValue, homeValue)
+          : null;
+        const recommendationKey =
+          key === "win_pct" ? "winning_team" : "covering_team";
+        matchup[recommendationKey] = leader?.team ?? null;
+        matchup[key] = leader?.percentage ?? null;
+        return;
+      }
 
       matchup[key] = bothValuesAvailable
         ? (Number(awayValue) + Number(homeValue)) / 2
@@ -597,6 +634,9 @@ function getDisplayValue(row, column) {
   if (column.type === "matchup") {
     return String(row.matchup ?? "—");
   }
+  if (column.type === "team-pick") {
+    return String(row[column.teamKey] ?? "—");
+  }
   if (column.type === "team") {
     return getTeamName(row);
   }
@@ -641,14 +681,17 @@ function renderTable() {
     const row = document.createElement("tr");
     columns.forEach((column) => {
       const value = getDisplayValue(data, column);
+      const percentageColumn =
+        column.type === "percentage" || column.type === "team-pick";
       const cell = createCell(
         value,
-        column.type === "percentage" ? "metric-cell" : ""
+        percentageColumn ? "metric-cell" : ""
       );
       cell.dataset.columnKey = column.key;
-      if (column.type === "percentage") {
+      if (percentageColumn) {
         const percentage = getPercentageValue(data[column.key]);
         cell.dataset.metric = column.key;
+        cell.dataset.colorable = String(column.type === "percentage");
         cell.dataset.percentage =
           percentage === null ? "" : String(percentage);
         cell.dataset.originalText = value;
@@ -708,6 +751,10 @@ function applyPercentageFilter() {
       // Hide individual percentages below the threshold.
       if (highPercentageFilterEnabled && value < higher) {
         cell.textContent = "";
+        return;
+      }
+
+      if (cell.dataset.colorable !== "true") {
         return;
       }
 
