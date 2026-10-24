@@ -10,7 +10,12 @@ from pathlib import Path
 
 import polars as pl
 
-from data_logic import load_schedules, get_seasons, compute_team_metrics
+from data_logic import (
+    compute_team_metrics,
+    get_next_week_games,
+    get_seasons,
+    load_schedules,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = REPO_ROOT / "static" / "data"
@@ -52,6 +57,13 @@ def main() -> None:
     # /data/seasons.json -> bare array, as fetchSeasons() expects.
     write_json(OUTPUT_DIR / "seasons.json", seasons)
     print(f"seasons.json: {len(seasons)} seasons")
+
+    futures = get_next_week_games(schedules)
+    write_json(OUTPUT_DIR / "futures.json", futures)
+    print(
+        f"futures.json: season={futures['season']}, "
+        f"week={futures['week']}, games={len(futures['games'])}"
+    )
 
     # Per-season folders: /data/<season>/full.json, /data/<season>/<n>.json
     for season in seasons:

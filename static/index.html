@@ -73,7 +73,7 @@
     </div>
 
     <!-- Previous games window -->
-    <div class="risk-card games-card">
+    <div id="gamesCard" class="risk-card games-card">
       <div class="risk-header">
         <div class="risk-title">Previous Games</div>
       </div>
@@ -113,7 +113,25 @@
 
     <div class="table-card">
       <div class="table-header">
-        <h2 class="table-title">Betting Percentages</h2>
+        <div class="table-heading">
+          <h2 id="tableTitle" class="table-title">Betting History</h2>
+          <div class="view-toggle" role="group" aria-label="Betting table">
+            <button
+              id="percentagesViewButton"
+              type="button"
+              aria-pressed="true"
+            >
+              History
+            </button>
+            <button
+              id="futuresViewButton"
+              type="button"
+              aria-pressed="false"
+            >
+              Futures
+            </button>
+          </div>
+        </div>
 
         <div class="table-controls">
           <button
@@ -129,14 +147,14 @@
             </span>
           </button>
 
-          <div class="season-control">
+          <div id="teamControl" class="season-control">
             <label for="teamSelect">Team:</label>
             <select id="teamSelect">
               <option value="">Loading teams...</option>
             </select>
           </div>
 
-          <div class="season-control">
+          <div id="seasonControl" class="season-control">
             <label for="seasonSelect">Season:</label>
             <select id="seasonSelect"></select>
           </div>

@@ -46,6 +46,7 @@ def _team_metrics(_hour: int) -> pl.DataFrame:
     )
     over = pl.col("home_score") + pl.col("away_score") > pl.col("total_line")
     margin = pl.col("result") - pl.col("spread_line")  # >0 home covers, <0 away covers, 0 push
+    
 
     def side(team: str, sign: int) -> pl.DataFrame:  # sign: +1 home, -1 away
         return games.select(

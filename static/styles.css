@@ -189,11 +189,32 @@ h1 {
   flex-wrap: wrap;
 }
 
+.table-heading,
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .table-title {
   margin: 0;
   font-size: 18px;
   font-weight: 900;
   color: #ffffff;
+}
+
+.view-toggle button {
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: #e5efff;
+  cursor: pointer;
+}
+
+.view-toggle button[aria-pressed="true"] {
+  background: rgba(59,130,246,0.35);
+  border-color: rgba(147,197,253,0.6);
 }
 
 .season-control {
